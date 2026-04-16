@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Card, CardContent } from './ui/card';
-import { ScrollArea } from './ui/scroll-area';
+import { Card, CardContent } from '../ui/card';
+import { ScrollArea } from '../ui/scroll-area';
 import { Clock, MapPin, DollarSign } from 'lucide-react';
-import { getCurrencyRates } from '../services/marketService';
+import { MarketConfig } from '../../types';
 
 const PriceDisplay = ({ value, defaultColor }: { value: number; defaultColor: string }) => {
   const [flashColor, setFlashColor] = useState<string | null>(null);
@@ -28,8 +28,7 @@ const PriceDisplay = ({ value, defaultColor }: { value: number; defaultColor: st
   );
 };
 
-export const CurrencyBoard: React.FC = () => {
-  const [rates, setRates] = useState<any[]>([]);
+export const CurrencyBoard: React.FC<{ config: MarketConfig }> = ({ config }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
@@ -37,15 +36,21 @@ export const CurrencyBoard: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    const loadRates = () => {
-      setRates(getCurrencyRates());
+  const rates = Object.entries(config.city_rates).map(([city, d]) => {
+    const data = d as { 
+      bid: number; 
+      ask: number; 
+      transfer_fees: { 
+        [country: string]: { to_usd: number; from_usd: number } 
+      } 
     };
-
-    loadRates();
-    const interval = setInterval(loadRates, 5000);
-    return () => clearInterval(interval);
-  }, []);
+    return {
+      city,
+      bid: data.bid,
+      ask: data.ask,
+      transfer_fees: data.transfer_fees
+    };
+  });
 
   return (
     <div className="w-full space-y-4">
@@ -66,7 +71,7 @@ export const CurrencyBoard: React.FC = () => {
       </div>
 
       <div className="bg-card rounded-xl shadow-md border border-border overflow-hidden">
-        <div className="grid grid-cols-3 px-6 py-4 bg-muted/50 border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">
+        <div className="grid grid-cols-3 px-4 md:px-6 py-4 bg-muted/50 border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">
           <span>City</span>
           <span className="text-center">Bid</span>
           <span className="text-right">Ask</span>
@@ -74,12 +79,14 @@ export const CurrencyBoard: React.FC = () => {
 
         <div className="divide-y divide-border">
           {rates.map((rate, idx) => (
-            <div key={idx} className="grid grid-cols-3 px-6 py-5 items-center hover:bg-muted/30 transition-all group">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center text-muted-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-all shadow-inner">
+            <div key={idx} className="grid grid-cols-3 px-4 md:px-6 py-5 items-center hover:bg-muted/30 transition-all group">
+              <div className="flex items-center gap-2 md:gap-3">
+                <div className="hidden sm:flex w-8 h-8 rounded-lg bg-muted items-center justify-center text-muted-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-all shadow-inner">
                   <MapPin className="w-4 h-4" />
                 </div>
-                <span className="font-bold text-foreground group-hover:text-primary transition-colors text-sm">{rate.city}</span>
+                <div className="flex flex-col min-w-0">
+                  <span className="font-bold text-foreground group-hover:text-primary transition-colors text-xs md:text-sm truncate">{rate.city}</span>
+                </div>
               </div>
               
               <div className="flex justify-center">
@@ -97,10 +104,10 @@ export const CurrencyBoard: React.FC = () => {
       <div className="p-10 text-center space-y-4">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-primary/10 rounded-full border border-primary/20 shadow-sm">
           <DollarSign className="w-3.5 h-3.5 text-primary" />
-          <span className="text-[10px] font-bold text-primary uppercase tracking-widest">Official CBI Rate: 1,320 IQD</span>
+          <span className="text-[10px] font-bold text-primary uppercase tracking-widest">Official Index Rate: {config.usd_iqd_index.toLocaleString()} IQD</span>
         </div>
         <p className="text-[10px] text-muted-foreground uppercase tracking-[0.3em] font-bold leading-relaxed opacity-60">
-          Parallel market rates are updated every 5 seconds <br /> based on local exchange activity.
+          Parallel market rates are updated in real-time <br /> based on admin configuration.
         </p>
       </div>
     </div>

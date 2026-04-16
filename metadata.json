@@ -1,5 +1,5 @@
 {
-  "name": "Remix: Remix: Remix: Remix: Iraq Precious Metals Exchange",
+  "name": "Iraq Precious Metals Exchange",
   "description": "A professional real-time trading platform for precious metals (Gold, Silver, Platinum, Palladium) tailored for the Iraqi market with local pricing factors.",
-  "requestFramePermissions": []
+  "requestFramePermissions": ["geolocation", "notifications"]
 }

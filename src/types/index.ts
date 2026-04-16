@@ -10,6 +10,16 @@ export interface User {
   address?: string;
   kyc_status: 'Pending' | 'Verified' | 'Rejected' | 'None';
   role: 'Trader' | 'Admin';
+  tier?: 'Standard' | 'Silver' | 'Gold' | 'Platinum';
+  kyc_docs?: {
+    id_front?: string;
+    id_back?: string;
+    selfie?: string;
+    business_license?: string;
+  };
+  subscription_status?: 'Active' | 'Expired' | 'Frozen' | 'None';
+  subscription_expiry?: string;
+  is_frozen?: boolean;
 }
 
 export interface MarketPrice {
@@ -25,6 +35,8 @@ export interface MarketPrice {
   high_24h?: number;
 }
 
+export type PricingModel = 'Fixed' | 'SpotRelated';
+
 export interface Order {
   id: string;
   trader_id: string;
@@ -39,6 +51,9 @@ export interface Order {
   status: OrderStatus;
   created_at: string;
   location: string;
+  pricing_model: PricingModel;
+  expiry_time?: string; // For Fixed price
+  premium?: number; // For SpotRelated price
 }
 
 export interface Negotiation {
@@ -72,5 +87,83 @@ export interface Trade {
   price: number;
   currency: 'USD' | 'IQD';
   executed_at: string;
-  contract_url?: string;
+  contract_id?: string;
+}
+
+export interface Contract {
+  id: string;
+  trade_id: string;
+  buyer_id: string;
+  seller_id: string;
+  buyer_name: string;
+  seller_name: string;
+  metal: MetalType;
+  quantity: number;
+  unit: Unit;
+  price: number;
+  currency: 'USD' | 'IQD';
+  status: 'Signed' | 'Completed' | 'Cancelled';
+  buyer_signature: string;
+  seller_signature: string;
+  signed_at: string;
+  created_at: string;
+}
+
+export interface MarketConfig {
+  usd_iqd_index: number;
+  subscription_fee_iqd: number;
+  city_rates: {
+    [city: string]: {
+      bid: number;
+      ask: number;
+      transfer_fees: {
+        [country: string]: {
+          to_usd: number;
+          from_usd: number;
+        };
+      };
+      local_prices?: {
+        'Gold': {
+          [karat: string]: { bid_iqd: number; ask_iqd: number };
+        };
+        'Silver': {
+          [purity: string]: { bid_iqd: number; ask_iqd: number };
+        };
+        'Platinum': { bid_iqd: number; ask_iqd: number };
+        'Palladium': { bid_iqd: number; ask_iqd: number };
+      };
+    };
+  };
+  premiums: {
+    [metal in MetalType]: {
+      usd_per_kg: number;
+      iqd_per_kg: number;
+    };
+  };
+  transfer_fees: {
+    [country: string]: {
+      to_usd_per_10k: number;
+      from_usd_per_10k: number;
+    };
+  };
+  local_prices: {
+    'Gold': {
+      [karat: string]: { bid_iqd: number; ask_iqd: number };
+    };
+    'Silver': {
+      [purity: string]: { bid_iqd: number; ask_iqd: number };
+    };
+    'Platinum': { bid_iqd: number; ask_iqd: number };
+    'Palladium': { bid_iqd: number; ask_iqd: number };
+  };
+}
+
+export interface Notification {
+  id: string;
+  title: string;
+  message: string;
+  type: 'info' | 'success' | 'warning' | 'error';
+  created_at: string;
+  is_read: boolean;
+  link?: string;
 }
