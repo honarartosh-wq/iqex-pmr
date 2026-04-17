@@ -20,6 +20,17 @@ export interface User {
   subscription_status?: 'Active' | 'Expired' | 'Frozen' | 'None';
   subscription_expiry?: string;
   is_frozen?: boolean;
+  rating?: number;       // 0–5 average star rating
+  total_trades?: number; // total completed trades
+  total_ratings?: number;
+}
+
+export interface TraderRating {
+  trader_id: string;
+  rater_id: string;
+  rating: number; // 1–5
+  comment?: string;
+  created_at: string;
 }
 
 export interface MarketPrice {
@@ -166,4 +177,32 @@ export interface Notification {
   created_at: string;
   is_read: boolean;
   link?: string;
+}
+
+export interface IQEXIndexComponent {
+  label: string;
+  weight: number;       // e.g., 0.50
+  factor: number;       // normalized ratio vs baseline (1.0 = at baseline)
+  contribution: number; // weight * factor
+  change: number;       // % change from prior
+}
+
+export interface IQEXMetalIndex {
+  id: string;           // e.g., 'gold-24k'
+  label: string;        // e.g., 'Gold 24K'
+  metal: MetalType;
+  purity?: string;
+  indexValue: number;   // composite score (base 1000)
+  change24h: number;    // % change
+  bidIQD: number;
+  askIQD: number;
+  bidUSD: number;
+  askUSD: number;
+  components: {
+    globalPrice: IQEXIndexComponent;
+    exchangeRate: IQEXIndexComponent;
+    localPremium: IQEXIndexComponent;
+    supplyDemand: IQEXIndexComponent;
+    hawalaCosts: IQEXIndexComponent;
+  };
 }

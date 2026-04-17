@@ -17,6 +17,9 @@ import {
   TrendingUp,
   TrendingDown,
   ArrowRight,
+  BarChart3,
+  Star,
+  Heart,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MarketBoard } from '../market/MarketBoard';
@@ -29,6 +32,7 @@ import { NegotiationPanel } from '../dialogs/NegotiationPanel';
 import { TradeHistory } from '../market/TradeHistory';
 import { KYCForm } from '../dialogs/KYCForm';
 import { CreateOrderDialog } from '../dialogs/CreateOrderDialog';
+import { IraqiMarketIndex } from '../market/IraqiMarketIndex';
 import { tradingViewService } from '../../services/tradingViewService';
 import { NotificationCenter } from '../shared/NotificationCenter';
 import { matchingEngine } from '../../services/matchingEngine';
@@ -65,9 +69,13 @@ export const TraderPortal: React.FC<TraderPortalProps> = ({
   user, orders, trades, isDarkMode, setIsDarkMode, marketConfig,
   onKYCComplete, onCreateOrder, onLogout, onSwitchPortal,
 }) => {
-  const [activeTab, setActiveTab] = useState<'prices'|'bazaar'|'currency'|'transfer'|'markets'|'history'|'profile'>('prices');
+  const [activeTab, setActiveTab] = useState<'prices'|'bazaar'|'currency'|'transfer'|'indexes'|'markets'|'history'|'profile'>('prices');
   const [activeNegotiation, setActiveNegotiation] = useState<Order|null>(null);
   const [displayMode, setDisplayMode] = useState<'USD' | 'IQD' | 'Both'>('IQD');
+  const [favoriteTraderIds, setFavoriteTraderIds] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('iqex_favorites') || '[]'); } catch { return []; }
+  });
+  const [traderRatings] = useState<Record<string, number>>({});
   const [notifications, setNotifications] = useState<Notification[]>([
     {
       id: '1',
@@ -78,6 +86,14 @@ export const TraderPortal: React.FC<TraderPortalProps> = ({
       is_read: false,
     }
   ]);
+
+  const handleToggleFavorite = (traderId: string) => {
+    setFavoriteTraderIds(prev => {
+      const next = prev.includes(traderId) ? prev.filter(id => id !== traderId) : [...prev, traderId];
+      localStorage.setItem('iqex_favorites', JSON.stringify(next));
+      return next;
+    });
+  };
 
   const handleCreateOrder = (order: any) => {
     setDisplayMode(order.currency);
@@ -110,16 +126,16 @@ export const TraderPortal: React.FC<TraderPortalProps> = ({
   };
 
   /* tabs that get the scrolling ticker under the portal header */
-  const showTicker = activeTab === 'prices';
+  const showTicker = activeTab === 'prices' || activeTab === 'indexes';
 
   const navItems = [
-    { id: 'prices', icon: <Activity className="w-5 h-5" />, label: 'Prices' },
-    { id: 'bazaar', icon: <Menu className="w-5 h-5" />, label: 'Bazaar' },
-    { id: 'currency', icon: <DollarSign className="w-5 h-5" />, label: 'FX' },
-    { id: 'transfer', icon: <ArrowRight className="w-5 h-5" />, label: 'Transfer' },
-    { id: 'markets', icon: <LayoutDashboard className="w-5 h-5" />, label: 'Orders' },
-    { id: 'history', icon: <History className="w-5 h-5" />, label: 'History' },
-    { id: 'profile', icon: <UserIcon className="w-5 h-5" />, label: 'Profile' },
+    { id: 'prices',   icon: <Activity className="w-5 h-5" />,      label: 'Prices' },
+    { id: 'bazaar',   icon: <Menu className="w-5 h-5" />,           label: 'Bazaar' },
+    { id: 'indexes',  icon: <BarChart3 className="w-5 h-5" />,      label: 'Index' },
+    { id: 'markets',  icon: <LayoutDashboard className="w-5 h-5" />, label: 'Orders' },
+    { id: 'currency', icon: <DollarSign className="w-5 h-5" />,     label: 'FX' },
+    { id: 'history',  icon: <History className="w-5 h-5" />,        label: 'History' },
+    { id: 'profile',  icon: <UserIcon className="w-5 h-5" />,       label: 'Profile' },
   ];
 
   const [liveTicker, setLiveTicker] = useState(TICKER);
@@ -231,6 +247,8 @@ export const TraderPortal: React.FC<TraderPortalProps> = ({
                 {/* ↓ embedded=true hides Bazaar's own header + ticker */}
                 {activeTab === 'bazaar' && <Bazaar embedded config={marketConfig} displayMode={displayMode} />}
 
+                {activeTab === 'indexes' && <IraqiMarketIndex config={marketConfig} orders={orders} />}
+
                 {activeTab === 'currency' && <CurrencyBoard config={marketConfig} />}
 
                 {activeTab === 'transfer' && <TransferFeesBoard config={marketConfig} />}
@@ -238,13 +256,16 @@ export const TraderPortal: React.FC<TraderPortalProps> = ({
                 {activeTab === 'markets' && (
                   <div className="grid grid-cols-1 xl:grid-cols-3 2xl:grid-cols-4 gap-8">
                     <div className="xl:col-span-2 2xl:col-span-3 space-y-6">
-                      <OrderBook 
-                        orders={orders} 
-                        config={marketConfig} 
+                      <OrderBook
+                        orders={orders}
+                        config={marketConfig}
                         displayCurrency={displayMode === 'Both' ? 'IQD' : displayMode}
                         setDisplayCurrency={(c) => setDisplayMode(c as any)}
-                        onSelectOrder={(order) => isSubscriptionActive && setActiveNegotiation(order)} 
+                        onSelectOrder={(order) => isSubscriptionActive && setActiveNegotiation(order)}
                         disabled={!isSubscriptionActive}
+                        favoriteTraderIds={favoriteTraderIds}
+                        onToggleFavorite={handleToggleFavorite}
+                        traderRatings={traderRatings}
                       />
 
                       {/* Suggested Matches for User's Orders */}
@@ -349,6 +370,25 @@ export const TraderPortal: React.FC<TraderPortalProps> = ({
                           <div>
                             <p className="text-[10px] uppercase text-slate-400 font-bold">Member Since</p>
                             <p className="text-sm font-medium">April 2026</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] uppercase text-slate-400 font-bold">Reputation</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <div className="flex items-center gap-0.5">
+                                {[1,2,3,4,5].map(s => (
+                                  <Star key={s} className={`w-3.5 h-3.5 ${s <= Math.round(user.rating || 0) ? 'text-amber-400 fill-amber-400' : 'text-slate-300'}`} />
+                                ))}
+                              </div>
+                              <span className="text-sm font-bold">{(user.rating || 0).toFixed(1)}</span>
+                              {user.total_ratings !== undefined && <span className="text-xs text-slate-400">({user.total_ratings})</span>}
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-[10px] uppercase text-slate-400 font-bold">Favorite Traders</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <Heart className="w-4 h-4 text-rose-500 fill-rose-500" />
+                              <span className="text-sm font-bold">{favoriteTraderIds.length} saved</span>
+                            </div>
                           </div>
                           <div className="col-span-2 pt-4 border-t">
                             <p className="text-[10px] uppercase text-slate-400 font-bold mb-1">Subscription Status</p>
