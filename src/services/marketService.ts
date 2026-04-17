@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { MarketConfig, MarketPrice, MetalType } from '../types';
+import { MarketConfig, MarketPrice, MetalType, IQEXMetalIndex, IQEXIndexComponent } from '../types';
 import { tradingViewService } from './tradingViewService';
 
 export const fetchMarketPrices = async (config: MarketConfig): Promise<MarketPrice[]> => {
@@ -38,8 +38,121 @@ export const fetchMarketPrices = async (config: MarketConfig): Promise<MarketPri
 };
 
 export const calculateIraqiIndex = (config: MarketConfig): number => {
-  // Simple index: Relative to a base rate of 1310
-  return (config.usd_iqd_index / 1310) * 100; 
+  return (config.usd_iqd_index / 1310) * 100;
+};
+
+/* ── IQEX 5-factor index baselines ─────────────────────────────────────── */
+const BASE = {
+  XAUUSD: 2000,   // USD/oz
+  XAGUSD: 25,     // USD/oz
+  XPTUSD: 950,    // USD/oz
+  XPDUSD: 1000,   // USD/oz
+  usd_iqd: 1310,
+  goldPremium: 1200,   // USD/kg
+  silverPremium: 150,
+  platinumPremium: 800,
+  palladiumPremium: 900,
+  hawala: 50,          // USD per 10k baseline
+  activity: 10,        // baseline active orders
+};
+
+function makeComponent(
+  label: string,
+  weight: number,
+  factor: number,
+  changePct: number
+): IQEXIndexComponent {
+  return { label, weight, factor, contribution: weight * factor, change: changePct };
+}
+
+export const calculateIQEXIndexes = (
+  config: MarketConfig,
+  activeOrderCount: number = 0
+): IQEXMetalIndex[] => {
+  const gp = tradingViewService.getPrices();
+  const ozToGram = 31.1035;
+  const cityRate = config.usd_iqd_index;
+
+  const activityFactor = Math.min(1.5, 0.7 + (activeOrderCount / BASE.activity) * 0.3);
+  const avgHawala = (() => {
+    const fees = Object.values(config.transfer_fees);
+    if (fees.length === 0) return BASE.hawala;
+    const avg = fees.reduce((s, f) => s + f.to_usd_per_10k, 0) / fees.length;
+    return avg || BASE.hawala;
+  })();
+  const hawalaFactor = BASE.hawala / Math.max(avgHawala, 1);
+  const fxFactor = cityRate / BASE.usd_iqd;
+
+  const buildIndex = (
+    id: string,
+    label: string,
+    metal: MetalType,
+    symbol: string,
+    purity: number,
+    premiumBase: number,
+    currentPremiumUSD: number,
+    purityKey?: string
+  ): IQEXMetalIndex => {
+    const spot = gp[symbol];
+    if (!spot) {
+      return {
+        id, label, metal, purity: purityKey,
+        indexValue: 1000, change24h: 0,
+        bidIQD: 0, askIQD: 0, bidUSD: 0, askUSD: 0,
+        components: {
+          globalPrice: makeComponent('Global Price', 0.50, 1, 0),
+          exchangeRate: makeComponent('Exchange Rate', 0.20, 1, 0),
+          localPremium: makeComponent('Local Premium', 0.15, 1, 0),
+          supplyDemand: makeComponent('Supply & Demand', 0.10, 1, 0),
+          hawalaCosts: makeComponent('Hawala Costs', 0.05, 1, 0),
+        },
+      };
+    }
+
+    const basePriceForMetal = symbol === 'XAUUSD' ? BASE.XAUUSD : symbol === 'XAGUSD' ? BASE.XAGUSD : symbol === 'XPTUSD' ? BASE.XPTUSD : BASE.XPDUSD;
+    const globalFactor = (spot.price * purity) / (basePriceForMetal * purity);
+    const premiumFactor = currentPremiumUSD / Math.max(premiumBase, 1);
+
+    const weightedScore =
+      0.50 * globalFactor +
+      0.20 * fxFactor +
+      0.15 * premiumFactor +
+      0.10 * activityFactor +
+      0.05 * hawalaFactor;
+
+    const indexValue = Math.round(weightedScore * 1000 * 10) / 10;
+
+    const pricePerGramUSD = (spot.bid * purity) / ozToGram;
+    const bidUSD = pricePerGramUSD;
+    const askUSD = (spot.ask * purity) / ozToGram;
+    const bidIQD = bidUSD * cityRate;
+    const askIQD = askUSD * cityRate;
+
+    return {
+      id, label, metal, purity: purityKey,
+      indexValue,
+      change24h: spot.change24h * purity,
+      bidIQD: Math.round(bidIQD),
+      askIQD: Math.round(askIQD),
+      bidUSD,
+      askUSD,
+      components: {
+        globalPrice: makeComponent('Global Price', 0.50, globalFactor, spot.change24h),
+        exchangeRate: makeComponent('Exchange Rate', 0.20, fxFactor, ((cityRate - BASE.usd_iqd) / BASE.usd_iqd) * 100),
+        localPremium: makeComponent('Local Premium', 0.15, premiumFactor, ((currentPremiumUSD - premiumBase) / premiumBase) * 100),
+        supplyDemand: makeComponent('Supply & Demand', 0.10, activityFactor, ((activeOrderCount - BASE.activity) / BASE.activity) * 100),
+        hawalaCosts: makeComponent('Hawala Costs', 0.05, hawalaFactor, ((BASE.hawala - avgHawala) / BASE.hawala) * 100),
+      },
+    };
+  };
+
+  return [
+    buildIndex('gold-24k', 'Gold 24K', 'Gold', 'XAUUSD', 1.000, BASE.goldPremium, config.premiums['Gold'].usd_per_kg, '24K'),
+    buildIndex('gold-21k', 'Gold 21K', 'Gold', 'XAUUSD', 0.875, BASE.goldPremium, config.premiums['Gold'].usd_per_kg * 0.875, '21K'),
+    buildIndex('silver',   'Silver 999', 'Silver', 'XAGUSD', 0.999, BASE.silverPremium, config.premiums['Silver'].usd_per_kg, '999'),
+    buildIndex('platinum', 'Platinum', 'Platinum', 'XPTUSD', 1.000, BASE.platinumPremium, config.premiums['Platinum'].usd_per_kg, undefined),
+    buildIndex('palladium','Palladium', 'Palladium', 'XPDUSD', 1.000, BASE.palladiumPremium, config.premiums['Palladium'].usd_per_kg, undefined),
+  ];
 };
 
 export const getIndexMetalPrices = (config: MarketConfig, prices: MarketPrice[]): MarketPrice[] => {

@@ -3,9 +3,24 @@ import { Order, OrderType, MetalType, MarketConfig } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
-import { Search, ArrowUpRight, ArrowDownLeft, ChevronRight, Package, User, MapPin, X, ChevronDown, Clock, TrendingUp, DollarSign, Coins, AlertCircle } from 'lucide-react';
+import { Search, ArrowUpRight, ArrowDownLeft, ChevronRight, Package, User, MapPin, X, ChevronDown, Clock, TrendingUp, DollarSign, Coins, AlertCircle, Star, Heart } from 'lucide-react';
 import { Input } from '../ui/input';
 import { ScrollArea } from '../ui/scroll-area';
+
+/* ── Star rating display ──────────────────────────────────────────────── */
+const StarRating: React.FC<{ rating: number; size?: 'sm' | 'xs' }> = ({ rating, size = 'xs' }) => {
+  const sz = size === 'xs' ? 'w-2.5 h-2.5' : 'w-3.5 h-3.5';
+  return (
+    <div className="flex items-center gap-0.5">
+      {[1, 2, 3, 4, 5].map(s => (
+        <Star
+          key={s}
+          className={`${sz} ${s <= Math.round(rating) ? 'text-amber-400 fill-amber-400' : 'text-muted-foreground/30'}`}
+        />
+      ))}
+    </div>
+  );
+};
 
 const getTimeRemaining = (expiryTime: string) => {
   const total = Date.parse(expiryTime) - Date.now();
@@ -44,21 +59,28 @@ interface OrderBookProps {
   setDisplayCurrency: (val: 'USD' | 'IQD') => void;
   onSelectOrder: (order: Order) => void;
   disabled?: boolean;
+  favoriteTraderIds?: string[];
+  onToggleFavorite?: (traderId: string) => void;
+  traderRatings?: Record<string, number>;
 }
 
-export const OrderBook: React.FC<OrderBookProps> = ({ 
-  orders, 
-  config, 
+export const OrderBook: React.FC<OrderBookProps> = ({
+  orders,
+  config,
   displayCurrency,
   setDisplayCurrency,
   onSelectOrder,
-  disabled
+  disabled,
+  favoriteTraderIds = [],
+  onToggleFavorite,
+  traderRatings = {},
 }) => {
   const [selectedMetal, setSelectedMetal] = useState<MetalType | 'All'>('All');
   const [selectedCity, setSelectedCity] = useState<string | 'All'>('All');
   const [search, setSearch] = useState('');
   const [citySearch, setCitySearch] = useState('');
   const [showCityDrop, setShowCityDrop] = useState(false);
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const citySearchRef = useRef<HTMLDivElement>(null);
 
   const metals: (MetalType | 'All')[] = ['All', 'Gold', 'Silver', 'Platinum', 'Palladium'];
@@ -80,16 +102,15 @@ export const OrderBook: React.FC<OrderBookProps> = ({
   }, []);
 
   const filteredOrders = orders.filter(order => {
-    // Filter out expired orders
     if (order.pricing_model === 'Fixed' && order.expiry_time) {
       if (Date.parse(order.expiry_time) <= Date.now()) return false;
     }
-
     const matchesMetal = selectedMetal === 'All' || order.metal === selectedMetal;
     const matchesCity = selectedCity === 'All' || order.location === selectedCity;
     const matchesSearch = order.trader_name.toLowerCase().includes(search.toLowerCase()) ||
                          order.location.toLowerCase().includes(search.toLowerCase());
-    return matchesMetal && matchesCity && matchesSearch;
+    const matchesFavorite = !showFavoritesOnly || favoriteTraderIds.includes(order.trader_id);
+    return matchesMetal && matchesCity && matchesSearch && matchesFavorite;
   });
 
   const formatPrice = (price: number, from: 'USD' | 'IQD', to: 'USD' | 'IQD') => {
@@ -104,7 +125,22 @@ export const OrderBook: React.FC<OrderBookProps> = ({
       <div className="px-2 space-y-6">
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold">Market Orders</h2>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 flex-wrap justify-end">
+            {/* Favorites Toggle */}
+            {onToggleFavorite && (
+              <button
+                onClick={() => setShowFavoritesOnly(v => !v)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${
+                  showFavoritesOnly
+                    ? 'bg-rose-500/10 text-rose-600 border-rose-500/30'
+                    : 'text-muted-foreground border-border hover:border-rose-500/30 hover:text-rose-500'
+                }`}
+              >
+                <Heart className={`w-3 h-3 ${showFavoritesOnly ? 'fill-rose-500' : ''}`} />
+                Favorites
+              </button>
+            )}
+
             {/* Currency Toggle */}
             <div className="flex items-center bg-muted/40 border border-border rounded-full p-1 gap-1 shadow-inner">
               <button
@@ -132,15 +168,16 @@ export const OrderBook: React.FC<OrderBookProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
-              {(selectedMetal !== 'All' || selectedCity !== 'All' || search !== '') && (
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
+              {(selectedMetal !== 'All' || selectedCity !== 'All' || search !== '' || showFavoritesOnly) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => {
                     setSelectedMetal('All');
                     setSelectedCity('All');
                     setSearch('');
                     setCitySearch('');
+                    setShowFavoritesOnly(false);
                   }}
                   className="text-xs text-muted-foreground hover:text-primary h-7 px-2"
                 >
@@ -289,20 +326,36 @@ export const OrderBook: React.FC<OrderBookProps> = ({
                   }`}
                   onClick={() => !disabled && onSelectOrder(order)}
                 >
-                  <div className="col-span-5 flex items-center gap-3">
+                  <div className="col-span-5 flex items-center gap-2.5">
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
                       order.type === 'Buy' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'
                     }`}>
                       {order.type === 'Buy' ? <ArrowDownLeft className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
                     </div>
-                    <div className="flex flex-col min-w-0">
+                    <div className="flex flex-col min-w-0 flex-1">
                       <span className="font-bold text-xs sm:text-sm tracking-tight group-hover:text-primary transition-colors truncate">
                         {order.metal.toUpperCase()}{order.purity ? `.${order.purity}` : ''}
                       </span>
                       <div className="text-[9px] sm:text-[10px] text-muted-foreground font-medium uppercase tracking-tighter truncate">
                         {order.trader_name} • <span className="text-primary/60">{order.location}</span>
                       </div>
+                      {traderRatings[order.trader_id] !== undefined && (
+                        <StarRating rating={traderRatings[order.trader_id]} />
+                      )}
                     </div>
+                    {onToggleFavorite && (
+                      <button
+                        onClick={e => { e.stopPropagation(); onToggleFavorite(order.trader_id); }}
+                        className="shrink-0 p-1 rounded-lg hover:bg-rose-500/10 transition-colors"
+                        title={favoriteTraderIds.includes(order.trader_id) ? 'Remove from favorites' : 'Add to favorites'}
+                      >
+                        <Heart className={`w-3.5 h-3.5 transition-colors ${
+                          favoriteTraderIds.includes(order.trader_id)
+                            ? 'text-rose-500 fill-rose-500'
+                            : 'text-muted-foreground/40 hover:text-rose-400'
+                        }`} />
+                      </button>
+                    )}
                   </div>
                   
                   <div className="col-span-3 text-right">
