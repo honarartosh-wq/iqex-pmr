@@ -155,13 +155,18 @@ export const TraderPortal: React.FC<TraderPortalProps> = ({
   }, [user.id]);
 
   useEffect(() => {
+    const labelToSymbol: Record<string, string> = {
+      'XAU/USD': 'XAUUSD',
+      'XAG/USD': 'XAGUSD',
+      'XPT/USD': 'XPTUSD',
+      'XPD/USD': 'XPDUSD',
+    };
     const unsubscribe = tradingViewService.subscribe((livePrices) => {
       const updatedTicker = TICKER.map(t => {
-        if (t.label === 'XAU/USD') return { ...t, val: livePrices['XAUUSD'].price, chg: livePrices['XAUUSD'].change24h };
-        if (t.label === 'XAG/USD') return { ...t, val: livePrices['XAGUSD'].price, chg: livePrices['XAGUSD'].change24h };
-        if (t.label === 'XPT/USD') return { ...t, val: livePrices['XPTUSD'].price, chg: livePrices['XPTUSD'].change24h };
-        if (t.label === 'XPD/USD') return { ...t, val: livePrices['XPDUSD'].price, chg: livePrices['XPDUSD'].change24h };
-        return t;
+        const symbol = labelToSymbol[t.label];
+        const live = symbol ? livePrices[symbol] : undefined;
+        if (!live) return t;
+        return { ...t, val: live.price, chg: live.change24h };
       });
       setLiveTicker(updatedTicker);
     });
