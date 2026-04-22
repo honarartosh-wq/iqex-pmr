@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MarketPrice, MarketConfig } from '../../types';
-import { fetchMarketPrices, calculateIraqiIndex, getKaratPrices, getSilverPurityPrices, recomputeLocalPrices } from '../../services/marketService';
+import { fetchMarketPrices, calculateIraqiIndex, getKaratPrices, getSilverPurityPrices, recomputeLocalPrices, mapLivePricesToMarketPrices } from '../../services/marketService';
 import { tradingViewService } from '../../services/tradingViewService';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -75,10 +75,8 @@ export const MarketBoard: React.FC<{ config: MarketConfig; displayMode?: 'USD' |
 
     loadData();
     
-    // Subscribe to live TradingView updates
-    const unsubscribe = tradingViewService.subscribe(async () => {
-      const data = await fetchMarketPrices(config);
-      setPrices(data);
+    const unsubscribe = tradingViewService.subscribe((livePrices) => {
+      setPrices(mapLivePricesToMarketPrices(config, livePrices));
       setIndex(calculateIraqiIndex(config));
     });
     

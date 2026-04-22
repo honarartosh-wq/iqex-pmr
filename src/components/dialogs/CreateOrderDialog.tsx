@@ -291,7 +291,7 @@ export const CreateOrderDialog: React.FC<CreateOrderDialogProps> = ({ onCreated,
               </p>
               {pricingModel === 'Fixed' && (
                 <p className="text-[9px] text-blue-600 font-bold">
-                  Estimated Expiry: {new Date(Date.now() + parseInt(expiryMinutes) * 60000).toLocaleTimeString()}
+                  Estimated Expiry: {new Date(Date.now() + parseInt(expiryMinutes, 10) * 60000).toLocaleTimeString()}
                 </p>
               )}
             </div>
