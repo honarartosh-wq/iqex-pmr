@@ -264,12 +264,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     setConfig(prev => {
       const newConfig: MarketConfig = JSON.parse(JSON.stringify(prev));
       selectedCities.forEach(city => {
-        newConfig.city_rates[city] = {
-          ...newConfig.city_rates[city],
-          bid: bulkRates.bid,
-          ask: bulkRates.ask,
-          transfer_fees: JSON.parse(JSON.stringify(bulkRates.transfer_fees))
-        };
+        // Mutate only the fields the bulk panel controls so unrelated
+        // data (local_prices, any future per-city fields) is preserved.
+        const entry = newConfig.city_rates[city] ?? ({} as MarketConfig['city_rates'][string]);
+        entry.bid = bulkRates.bid;
+        entry.ask = bulkRates.ask;
+        entry.transfer_fees = JSON.parse(JSON.stringify(bulkRates.transfer_fees));
+        newConfig.city_rates[city] = entry;
       });
       return newConfig;
     });
