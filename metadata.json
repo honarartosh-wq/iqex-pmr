@@ -1,0 +1,5 @@
+{
+  "name": "IQEX - Iraqi Precious Metals Exchange",
+  "description": "IQEX (Iraqi Precious Metals Exchange) is a professional real-time trading platform for precious metals tailored specifically for the Iraqi market with advanced local pricing factors.",
+  "requestFramePermissions": ["geolocation", "notifications"]
+}
