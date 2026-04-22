@@ -24,6 +24,7 @@ class MatchingEngine {
       for (const sell of sellOrders) {
         // Basic matching criteria
         if (
+          buy.trader_id !== sell.trader_id &&
           buy.metal === sell.metal &&
           buy.purity === sell.purity &&
           buy.currency === sell.currency &&
@@ -50,6 +51,7 @@ class MatchingEngine {
 
     return allOrders.filter(o => {
       if (o.id === order.id || o.status !== 'Open' || o.type === order.type) return false;
+      if (o.trader_id === order.trader_id) return false;
       if (o.metal !== order.metal || o.purity !== order.purity || o.currency !== order.currency) return false;
 
       if (order.type === 'Buy') {
