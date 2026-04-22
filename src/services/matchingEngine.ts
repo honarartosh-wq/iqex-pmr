@@ -28,6 +28,7 @@ class MatchingEngine {
           buy.metal === sell.metal &&
           buy.purity === sell.purity &&
           buy.currency === sell.currency &&
+          buy.unit === sell.unit &&
           buy.price_per_unit >= sell.price_per_unit
         ) {
           matches.push({
@@ -53,6 +54,7 @@ class MatchingEngine {
       if (o.id === order.id || o.status !== 'Open' || o.type === order.type) return false;
       if (o.trader_id === order.trader_id) return false;
       if (o.metal !== order.metal || o.purity !== order.purity || o.currency !== order.currency) return false;
+      if (o.unit !== order.unit) return false;
 
       if (order.type === 'Buy') {
         return order.price_per_unit >= o.price_per_unit;

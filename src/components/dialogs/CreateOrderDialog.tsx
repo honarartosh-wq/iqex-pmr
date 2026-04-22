@@ -48,22 +48,51 @@ export const CreateOrderDialog: React.FC<CreateOrderDialogProps> = ({ onCreated,
     return () => unsubscribe();
   }, [metal]);
 
+  const [formError, setFormError] = useState<string | null>(null);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    const parsedQuantity = parseFloat(quantity);
+    const parsedPrice = pricingModel === 'Fixed' ? parseFloat(price) : 0;
+    const parsedPremium = pricingModel === 'SpotRelated' ? parseFloat(premium) : 0;
+    const parsedExpiry = parseInt(expiryMinutes, 10);
+
+    if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
+      setFormError('Quantity must be a positive number.');
+      return;
+    }
+    if (pricingModel === 'Fixed') {
+      if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+        setFormError('Price must be a positive number.');
+        return;
+      }
+      if (!Number.isFinite(parsedExpiry) || parsedExpiry <= 0) {
+        setFormError('Expiry must be a positive number of minutes.');
+        return;
+      }
+    }
+    if (pricingModel === 'SpotRelated' && !Number.isFinite(parsedPremium)) {
+      setFormError('Premium must be a valid number.');
+      return;
+    }
+
+    setFormError(null);
+
     const newOrder = {
       trader_id: traderId,
       type,
       metal,
-      quantity: parseFloat(quantity),
+      quantity: parsedQuantity,
       unit,
-      price_per_unit: parseFloat(price),
+      price_per_unit: pricingModel === 'Fixed' ? parsedPrice : 0,
       purity,
       currency,
       status: 'Open',
       location: 'Baghdad',
       pricing_model: pricingModel,
-      expiry_time: pricingModel === 'Fixed' ? new Date(Date.now() + parseInt(expiryMinutes) * 60000).toISOString() : undefined,
-      premium: pricingModel === 'SpotRelated' ? parseFloat(premium) : undefined,
+      expiry_time: pricingModel === 'Fixed' ? new Date(Date.now() + parsedExpiry * 60000).toISOString() : undefined,
+      premium: pricingModel === 'SpotRelated' ? parsedPremium : undefined,
     };
     onCreated(newOrder);
     setOpen(false);
@@ -267,6 +296,12 @@ export const CreateOrderDialog: React.FC<CreateOrderDialogProps> = ({ onCreated,
               )}
             </div>
           </div>
+
+          {formError && (
+            <div className="text-[11px] font-medium text-rose-600 bg-rose-500/10 border border-rose-500/20 rounded-md px-3 py-2">
+              {formError}
+            </div>
+          )}
 
           <DialogFooter>
             <Button type="submit" className="w-full bg-slate-900">Post Order to Market</Button>
