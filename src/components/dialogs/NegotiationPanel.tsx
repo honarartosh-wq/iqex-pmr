@@ -35,21 +35,24 @@ export const NegotiationPanel: React.FC<NegotiationPanelProps> = ({ order, curre
   const socketRef = useRef<Socket | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Derive a stable room identifier from the order + buyer so both parties join the same room.
+  const isSellerPerspective = currentUser.id === order.trader_id;
+  const roomBuyerId = initialBuyerId || (isSellerPerspective ? 'external_trader' : currentUser.id);
+  const roomId = `negotiation_${order.id}_${roomBuyerId}`;
+
   useEffect(() => {
     const initNegotiation = async () => {
-      const isSeller = currentUser.id === order.trader_id;
-      const buyerId = initialBuyerId || (isSeller ? 'external_trader' : currentUser.id); 
       const sellerId = order.trader_id;
-      
-      const neg = initialNegotiationId 
+
+      const neg = initialNegotiationId
         ? await negotiationService.getUserNegotiations(currentUser.id).then(negs => negs.find(n => n.id === initialNegotiationId))
-        : await negotiationService.getOrCreateNegotiation(order.id, buyerId, sellerId);
-      
+        : await negotiationService.getOrCreateNegotiation(order.id, roomBuyerId, sellerId);
+
       if (neg) {
         setNegotiationId(neg.id);
         setNegStatus(neg.status);
         if (neg.status === 'Accepted') setIsCompleted(true);
-        
+
         const existingMessages = await negotiationService.getMessages(neg.id);
         setMessages(existingMessages);
       }
@@ -69,10 +72,11 @@ export const NegotiationPanel: React.FC<NegotiationPanelProps> = ({ order, curre
       // This prevents the unhandled rejection from bubbling up if the connection fails
     });
 
-    const roomId = `negotiation_${order.id}_${currentUser.id}`;
     socketRef.current.emit('join-room', roomId);
 
     socketRef.current.on('receive-offer', (data: any) => {
+      // Ignore our own echo — we already appended the message locally when sending.
+      if (data.senderId === currentUser.id) return;
       const newMessage: Message = {
         id: Math.random().toString(36).substr(2, 9),
         negotiation_id: roomId,
@@ -119,7 +123,7 @@ export const NegotiationPanel: React.FC<NegotiationPanelProps> = ({ order, curre
     return () => {
       socketRef.current?.disconnect();
     };
-  }, [order.id, currentUser.id]);
+  }, [order.id, currentUser.id, initialNegotiationId, initialBuyerId]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -130,9 +134,15 @@ export const NegotiationPanel: React.FC<NegotiationPanelProps> = ({ order, curre
   const handleSendMessage = async () => {
     if (!input.trim() && !offerPrice) return;
 
-    const roomId = `negotiation_${order.id}_${currentUser.id}`;
     const isOffer = !!offerPrice;
-    
+    const parsedPrice = parseFloat(offerPrice);
+    const parsedQuantity = parseFloat(offerQuantity);
+
+    if (isOffer && (!Number.isFinite(parsedPrice) || !Number.isFinite(parsedQuantity) || parsedPrice <= 0 || parsedQuantity <= 0)) {
+      console.warn('Invalid offer: price and quantity must be positive numbers.');
+      return;
+    }
+
     // Save to database
     if (negotiationId) {
       await negotiationService.saveMessage({
@@ -140,8 +150,8 @@ export const NegotiationPanel: React.FC<NegotiationPanelProps> = ({ order, curre
         sender_id: currentUser.id,
         content: input,
         type: isOffer ? 'Offer' : 'Message',
-        offer_price: isOffer ? parseFloat(offerPrice) : undefined,
-        offer_quantity: isOffer ? parseFloat(offerQuantity) : undefined,
+        offer_price: isOffer ? parsedPrice : undefined,
+        offer_quantity: isOffer ? parsedQuantity : undefined,
       });
     }
 
@@ -151,8 +161,8 @@ export const NegotiationPanel: React.FC<NegotiationPanelProps> = ({ order, curre
       type: isOffer ? 'Offer' : 'Message',
       offer: {
         message: input,
-        price: parseFloat(offerPrice),
-        quantity: parseFloat(offerQuantity),
+        price: isOffer ? parsedPrice : undefined,
+        quantity: isOffer ? parsedQuantity : undefined,
       }
     };
 
@@ -161,8 +171,6 @@ export const NegotiationPanel: React.FC<NegotiationPanelProps> = ({ order, curre
   };
 
   const handleAcceptOffer = async (msg: Message) => {
-    const roomId = `negotiation_${order.id}_${currentUser.id}`;
-    
     // 0. Update negotiation status in DB
     if (negotiationId) {
       await negotiationService.updateNegotiationStatus(negotiationId, 'Accepted');
@@ -227,8 +235,6 @@ export const NegotiationPanel: React.FC<NegotiationPanelProps> = ({ order, curre
   };
 
   const handleRejectOffer = async () => {
-    const roomId = `negotiation_${order.id}_${currentUser.id}`;
-    
     if (negotiationId) {
       await negotiationService.updateNegotiationStatus(negotiationId, 'Rejected');
       await negotiationService.saveMessage({

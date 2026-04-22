@@ -9,16 +9,17 @@ const PriceDisplay = ({ value, defaultColor }: { value: number; defaultColor: st
   const prevValue = useRef(value);
 
   useEffect(() => {
-    if (value > prevValue.current) {
+    const prev = prevValue.current;
+    prevValue.current = value;
+    if (value > prev) {
       setFlashColor('text-emerald-500');
       const timer = setTimeout(() => setFlashColor(null), 1000);
       return () => clearTimeout(timer);
-    } else if (value < prevValue.current) {
+    } else if (value < prev) {
       setFlashColor('text-rose-500');
       const timer = setTimeout(() => setFlashColor(null), 1000);
       return () => clearTimeout(timer);
     }
-    prevValue.current = value;
   }, [value]);
 
   return (
