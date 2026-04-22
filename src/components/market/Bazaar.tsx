@@ -7,11 +7,7 @@ import {
 } from 'lucide-react';
 import { Input } from '../ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
-import {
-  fetchMarketPrices, getKaratPrices, getSilverPurityPrices,
-} from '../../services/marketService';
-import { tradingViewService } from '../../services/tradingViewService';
-import { MarketPrice, MarketConfig } from '../../types';
+import { MarketConfig } from '../../types';
 
 /* ─── constants ──────────────────────────────────────────────────────────── */
 const CITIES = [
@@ -165,71 +161,61 @@ export const Bazaar: React.FC<BazaarProps> = ({ embedded = false, config, displa
     return () => document.removeEventListener('mousedown', fn);
   }, []);
 
-  // Load data when city changes
-  const loadData = useCallback(async () => {
-    if (!selectedCity) return;
-    
-    setIsRefreshing(true);
-    try {
-      const mp: MarketPrice[] = await fetchMarketPrices(config);
-      const gold = mp.find(p => p.metal === 'Gold');
-      const silver = mp.find(p => p.metal === 'Silver');
-      
-      const cityRate = config.city_rates[selectedCity];
-      const rates = cityRate ? [{
-        city: selectedCity,
-        pair: 'USD/IQD',
-        bid: cityRate.bid,
-        ask: cityRate.ask,
-        type: 'Spot',
-        transfer_fees: cityRate.transfer_fees
-      }] : [];
-
-      if (gold && silver) {
-        const goldRows = Object.entries(config.local_prices.Gold).map(([karat, p]) => {
-          const pricesData = p as { bid_iqd: number; ask_iqd: number };
-          return {
-            name: `Gold ${karat}`,
-            bid: pricesData.bid_iqd,
-            ask: pricesData.ask_iqd,
-            spread: pricesData.ask_iqd - pricesData.bid_iqd,
-            unit: 'Gram',
-            group: 'gold'
-          };
-        });
-
-        const silverRows = Object.entries(config.local_prices.Silver).map(([purity, p]) => {
-          const pricesData = p as { bid_iqd: number; ask_iqd: number };
-          return {
-            name: `Silver ${purity}`,
-            bid: pricesData.bid_iqd,
-            ask: pricesData.ask_iqd,
-            spread: pricesData.ask_iqd - pricesData.bid_iqd,
-            unit: 'Gram',
-            group: 'silver'
-          };
-        });
-
-        setPrices([...goldRows, ...silverRows]);
-      }
-      setFxRates(rates);
-    } catch (error) {
-      console.error('Failed to load market data:', error);
-    } finally {
-      setTimeout(() => setIsRefreshing(false), 500);
+  // Derived rows and FX rates. The bazaar view is entirely config-driven —
+  // local_prices and city_rates come from admin configuration, not from the
+  // live TradingView spot feed — so we recompute only when those inputs
+  // change instead of subscribing to the 2s price tick.
+  const { derivedPrices, derivedFxRates } = useMemo(() => {
+    if (!selectedCity) {
+      return { derivedPrices: [] as any[], derivedFxRates: [] as any[] };
     }
+
+    const cityRate = config.city_rates[selectedCity];
+    const rates = cityRate ? [{
+      city: selectedCity,
+      pair: 'USD/IQD',
+      bid: cityRate.bid,
+      ask: cityRate.ask,
+      type: 'Spot',
+      transfer_fees: cityRate.transfer_fees,
+    }] : [];
+
+    const goldRows = Object.entries(config.local_prices.Gold).map(([karat, p]) => {
+      const pricesData = p as { bid_iqd: number; ask_iqd: number };
+      return {
+        name: `Gold ${karat}`,
+        bid: pricesData.bid_iqd,
+        ask: pricesData.ask_iqd,
+        spread: pricesData.ask_iqd - pricesData.bid_iqd,
+        unit: 'Gram',
+        group: 'gold',
+      };
+    });
+
+    const silverRows = Object.entries(config.local_prices.Silver).map(([purity, p]) => {
+      const pricesData = p as { bid_iqd: number; ask_iqd: number };
+      return {
+        name: `Silver ${purity}`,
+        bid: pricesData.bid_iqd,
+        ask: pricesData.ask_iqd,
+        spread: pricesData.ask_iqd - pricesData.bid_iqd,
+        unit: 'Gram',
+        group: 'silver',
+      };
+    });
+
+    return { derivedPrices: [...goldRows, ...silverRows], derivedFxRates: rates };
   }, [selectedCity, config]);
 
   useEffect(() => {
-    loadData();
-    
-    // Subscribe to live TradingView updates
-    const unsubscribe = tradingViewService.subscribe(() => {
-      loadData();
-    });
+    setPrices(derivedPrices);
+    setFxRates(derivedFxRates);
 
-    return () => unsubscribe();
-  }, [loadData]);
+    if (!selectedCity) return;
+    setIsRefreshing(true);
+    const t = setTimeout(() => setIsRefreshing(false), 500);
+    return () => clearTimeout(t);
+  }, [derivedPrices, derivedFxRates, selectedCity]);
 
   const clearCity = useCallback(() => {
     setSelectedCity(null);
