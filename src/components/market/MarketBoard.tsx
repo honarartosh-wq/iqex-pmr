@@ -4,9 +4,7 @@ import { fetchMarketPrices, calculateIraqiIndex, getKaratPrices, getSilverPurity
 import { tradingViewService } from '../../services/tradingViewService';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
-import { TrendingUp, TrendingDown, Activity, ArrowUpRight, ArrowDownLeft, Clock, ArrowUpDown } from 'lucide-react';
-import { motion } from 'motion/react';
+import { TrendingUp, TrendingDown, Activity, ArrowUpRight, ArrowDownLeft, Clock } from 'lucide-react';
 
 /* ─── flash price cell ───────────────────────────────────────────────────── */
 const Num = ({
