@@ -28,11 +28,16 @@ export const authService = {
   onAuthStateChange(callback: (user: User | null) => void) {
     return supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
-        const { data: profile } = await supabase
+        const { data: profile, error } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', session.user.id)
           .single();
+        if (error || !profile) {
+          console.error('Error fetching profile on auth change:', error);
+          callback(null);
+          return;
+        }
         callback(profile as User);
       } else {
         callback(null);

@@ -42,12 +42,19 @@ export default function App() {
       // 1. Production Connectivity Check
       console.log('[IQEX] Verifying production environment...');
       try {
-        const fetchPromise = fetch(`${supabaseUrl}/rest/v1/`, { 
-          method: 'HEAD', 
-          headers: { 'apikey': supabaseKey } 
+        const fetchPromise = fetch(`${supabaseUrl}/rest/v1/`, {
+          method: 'HEAD',
+          headers: { 'apikey': supabaseKey }
         });
-        const timeoutFetch = new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 15000));
-        await Promise.race([fetchPromise, timeoutFetch]);
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        const timeoutFetch = new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('timeout')), 15000);
+        });
+        try {
+          await Promise.race([fetchPromise, timeoutFetch]);
+        } finally {
+          if (timeoutId !== undefined) clearTimeout(timeoutId);
+        }
       } catch (e) {
         throw new Error('Secure connection to IQEX Trading Floor failed. Please check your network or project status.');
       }

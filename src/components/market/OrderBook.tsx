@@ -80,6 +80,9 @@ export const OrderBook: React.FC<OrderBookProps> = ({
   }, []);
 
   const filteredOrders = orders.filter(order => {
+    // Only show tradable orders in the book
+    if (order.status !== 'Open' && order.status !== 'Negotiating') return false;
+
     // Filter out expired orders
     if (order.pricing_model === 'Fixed' && order.expiry_time) {
       if (Date.parse(order.expiry_time) <= Date.now()) return false;
