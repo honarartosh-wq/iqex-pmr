@@ -24,34 +24,58 @@ class TradingViewService {
   };
 
   private callbacks: ((prices: Record<string, LivePrice>) => void)[] = [];
+  private simInterval: ReturnType<typeof setInterval> | null = null;
+  private fetchInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
     this.fetchRealPrices();
     // Start simulation of live updates for smooth UI
-    setInterval(() => this.simulateUpdates(), 2000);
+    this.simInterval = setInterval(() => this.simulateUpdates(), 2000);
     // Refresh real prices every 30 seconds to stay in sync with global markets
-    setInterval(() => this.fetchRealPrices(), 30000);
+    this.fetchInterval = setInterval(() => this.fetchRealPrices(), 30000);
+
+    // Ensure intervals are torn down on Vite HMR disposal to avoid leaking
+    // stale timers across module reloads.
+    if (typeof import.meta !== 'undefined' && (import.meta as any).hot) {
+      (import.meta as any).hot.dispose(() => this.destroy());
+    }
+  }
+
+  public destroy() {
+    if (this.simInterval !== null) {
+      clearInterval(this.simInterval);
+      this.simInterval = null;
+    }
+    if (this.fetchInterval !== null) {
+      clearInterval(this.fetchInterval);
+      this.fetchInterval = null;
+    }
+    this.callbacks = [];
   }
 
   private async fetchRealPrices() {
     const symbols = ['XAU', 'XAG', 'XPT', 'XPD'];
-    
+
     await Promise.all(symbols.map(async (s) => {
       try {
         const response = await fetch(`/api/prices/${s}`);
         if (!response.ok) return;
-        
+
         const data = await response.json();
-        if (data && data.price) {
-          const symbol = `${s}USD`;
-          this.prices[symbol] = {
-            ...this.prices[symbol],
-            price: data.price,
-            bid: data.price * 0.9998,
-            ask: data.price * 1.0002,
-            lastUpdated: Date.now(),
-          };
+        const rawPrice = typeof data?.price === 'string' ? parseFloat(data.price) : data?.price;
+        if (typeof rawPrice !== 'number' || !Number.isFinite(rawPrice) || rawPrice <= 0) {
+          console.warn(`[tradingView] Ignoring non-numeric price for ${s}:`, data?.price);
+          return;
         }
+
+        const symbol = `${s}USD`;
+        this.prices[symbol] = {
+          ...this.prices[symbol],
+          price: rawPrice,
+          bid: rawPrice * 0.9998,
+          ask: rawPrice * 1.0002,
+          lastUpdated: Date.now(),
+        };
       } catch (error) {
         console.warn(`Failed to fetch price for ${s} via proxy:`, error);
       }
