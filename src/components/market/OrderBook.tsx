@@ -95,7 +95,7 @@ export const OrderBook: React.FC<OrderBookProps> = ({
     return matchesMetal && matchesCity && matchesSearch;
   });
 
-  const formatPrice = (price: number, from: 'USD' | 'IQD', to: 'USD' | 'IQD') => {
+  const convertPrice = (price: number, from: 'USD' | 'IQD', to: 'USD' | 'IQD') => {
     if (from === to) return price;
     if (from === 'USD' && to === 'IQD') return price * config.usd_iqd_index;
     if (from === 'IQD' && to === 'USD') return price / config.usd_iqd_index;
@@ -281,8 +281,8 @@ export const OrderBook: React.FC<OrderBookProps> = ({
             </div>
           ) : (
             filteredOrders.map((order) => {
-              const convertedPrice = formatPrice(order.price_per_unit, order.currency, displayCurrency);
-              const convertedPremium = order.premium ? formatPrice(order.premium, order.currency, displayCurrency) : undefined;
+              const convertedPrice = convertPrice(order.price_per_unit, order.currency, displayCurrency);
+              const convertedPremium = order.premium ? convertPrice(order.premium, order.currency, displayCurrency) : undefined;
               
               return (
                 <div 
