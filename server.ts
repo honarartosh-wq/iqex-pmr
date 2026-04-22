@@ -15,13 +15,15 @@ const __dirname = path.dirname(__filename);
 async function startServer() {
   const app = express();
   const httpServer = createServer(app);
+  const CORS_ORIGIN = process.env.CORS_ORIGIN || "https://iraqimetalexchange.com";
   const io = new Server(httpServer, {
     cors: {
-      origin: "*",
+      origin: process.env.NODE_ENV === "production" ? CORS_ORIGIN : "*",
+      methods: ["GET", "POST"],
     },
   });
 
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Socket.io logic for real-time negotiations
   io.on("connection", (socket) => {
