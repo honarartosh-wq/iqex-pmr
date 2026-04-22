@@ -106,10 +106,13 @@ async function startServer() {
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
+    // Reuse the Express/Socket.io HTTP server for HMR so we don't try to
+    // bind a second listener on PORT. Socket.io keeps its own upgrade path,
+    // so the two WebSocket clients coexist without conflict.
     const vite = await createViteServer({
-      server: { 
+      server: {
         middlewareMode: true,
-        hmr: process.env.DISABLE_HMR === 'true' ? false : { port: 3000 }
+        hmr: process.env.DISABLE_HMR === 'true' ? false : { server: httpServer },
       },
       appType: "spa",
     });
