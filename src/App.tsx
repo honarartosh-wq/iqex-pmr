@@ -119,13 +119,21 @@ export default function App() {
       setMarketConfig(newConfig);
     });
 
-    const orderSub = orderService.subscribeToOrders((newOrder) => {
+    const orderSub = orderService.subscribeToOrders((payload) => {
+      if (payload.eventType === 'DELETE') {
+        const removedId = payload.old?.id;
+        if (!removedId) return;
+        setOrders(prev => prev.filter(o => o.id !== removedId));
+        return;
+      }
+      const next = payload.new;
+      if (!next) return;
       setOrders(prev => {
-        const exists = prev.find(o => o.id === newOrder.id);
+        const exists = prev.find(o => o.id === next.id);
         if (exists) {
-          return prev.map(o => o.id === newOrder.id ? newOrder : o);
+          return prev.map(o => o.id === next.id ? next : o);
         }
-        return [newOrder, ...prev];
+        return [next, ...prev];
       });
     });
 

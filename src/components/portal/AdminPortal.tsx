@@ -260,15 +260,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
   const applyBulkUpdate = () => {
     if (selectedCities.length === 0) return;
-    
+
     setConfig(prev => {
-      const newConfig = { ...prev };
+      const newConfig: MarketConfig = JSON.parse(JSON.stringify(prev));
       selectedCities.forEach(city => {
         newConfig.city_rates[city] = {
           ...newConfig.city_rates[city],
           bid: bulkRates.bid,
           ask: bulkRates.ask,
-          transfer_fees: { ...bulkRates.transfer_fees }
+          transfer_fees: JSON.parse(JSON.stringify(bulkRates.transfer_fees))
         };
       });
       return newConfig;
@@ -278,10 +278,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const updateConfig = (path: string, value: any) => {
     const keys = path.split('.');
     setConfig(prev => {
-      const newConfig = { ...prev };
+      // Deep clone so nested recalculation below cannot mutate prev.
+      const newConfig: MarketConfig = JSON.parse(JSON.stringify(prev));
       let current: any = newConfig;
       for (let i = 0; i < keys.length - 1; i++) {
-        current[keys[i]] = { ...current[keys[i]] };
         current = current[keys[i]];
       }
       current[keys[keys.length - 1]] = value;

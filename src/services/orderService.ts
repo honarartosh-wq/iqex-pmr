@@ -45,14 +45,22 @@ export const orderService = {
     return true;
   },
 
-  subscribeToOrders(callback: (order: Order) => void) {
+  subscribeToOrders(callback: (payload: {
+    eventType: 'INSERT' | 'UPDATE' | 'DELETE';
+    new: Order | null;
+    old: Order | null;
+  }) => void) {
     return supabase
       .channel('order_changes')
       .on(
         'postgres_changes',
         { event: '*', table: 'orders', schema: 'public' },
-        async (payload) => {
-          callback(payload.new as Order);
+        (payload) => {
+          callback({
+            eventType: payload.eventType as 'INSERT' | 'UPDATE' | 'DELETE',
+            new: (payload.new as Order) ?? null,
+            old: (payload.old as Order) ?? null,
+          });
         }
       )
       .subscribe();
