@@ -42,12 +42,18 @@ export const calculateIraqiIndex = (config: MarketConfig): number => {
   return (config.usd_iqd_index / 1310) * 100; 
 };
 
-export const getIndexMetalPrices = (config: MarketConfig, prices: MarketPrice[]): MarketPrice[] => {
-  return prices.map(p => ({
-    ...p,
-    local_bid_iqd: p.global_bid * config.usd_iqd_index,
-    local_ask_iqd: p.global_ask * config.usd_iqd_index
-  }));
+// Re-derives local IQD fields from existing global prices using the current config.
+// Use this instead of re-fetching when only the exchange rate or premium has changed.
+export const recomputeLocalPrices = (config: MarketConfig, prices: MarketPrice[]): MarketPrice[] => {
+  return prices.map(p => {
+    const premium = config.premiums[p.metal].usd_per_kg / 32.1507;
+    return {
+      ...p,
+      local_bid_iqd: (p.global_bid + premium) * config.usd_iqd_index,
+      local_ask_iqd: (p.global_ask + premium) * config.usd_iqd_index,
+      premium: config.premiums[p.metal].usd_per_kg,
+    };
+  });
 };
 
 export const getKaratPrices = (bid: number, ask: number) => {

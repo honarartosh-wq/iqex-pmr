@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MarketPrice, MarketConfig } from '../../types';
-import { fetchMarketPrices, calculateIraqiIndex, getKaratPrices, getSilverPurityPrices, getIndexMetalPrices } from '../../services/marketService';
+import { fetchMarketPrices, calculateIraqiIndex, getKaratPrices, getSilverPurityPrices, recomputeLocalPrices } from '../../services/marketService';
 import { tradingViewService } from '../../services/tradingViewService';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -103,7 +103,7 @@ export const MarketBoard: React.FC<{ config: MarketConfig; displayMode?: 'USD' |
   const goldPrice = prices.find(p => p.metal === 'Gold');
   const silverPrice = prices.find(p => p.metal === 'Silver');
 
-  const indexMetalPrices = getIndexMetalPrices(config, prices);
+  const indexMetalPrices = recomputeLocalPrices(config, prices);
   const indexGold = indexMetalPrices.find(p => p.metal === 'Gold');
   const indexSilver = indexMetalPrices.find(p => p.metal === 'Silver');
 
