@@ -18,11 +18,28 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [companyName, setCompanyName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
+
+  const fetchProfileWithRetry = async (userId: string): Promise<User | null> => {
+    // The handle_new_user DB trigger populates the profile row asynchronously.
+    // Poll briefly before falling back to a client-side upsert.
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const { data, error: fetchError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+      if (!fetchError && data) return data as User;
+      await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)));
+    }
+    return null;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
+    setInfoMessage(null);
 
     try {
       if (mode === 'login') {
@@ -55,36 +72,41 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         });
 
         if (authError) throw authError;
+        if (!data.user) {
+          throw new Error('Sign up did not return a user. Please try again.');
+        }
 
-        if (data.user) {
-          // The trigger handle_new_user will create the profile
-          // But we might need to wait a bit or fetch it
-          const { data: profile, error: profileError } = await supabase
+        // If email confirmation is required, Supabase returns a user but no session.
+        // We must not call onLogin because subsequent DB calls would run unauthenticated.
+        if (!data.session) {
+          setInfoMessage(
+            'Account created. Please check your inbox to confirm your email before signing in.'
+          );
+          setMode('login');
+          setPassword('');
+          return;
+        }
+
+        // Session established — wait for the profile trigger, then fall back to upsert.
+        let profile = await fetchProfileWithRetry(data.user.id);
+        if (!profile) {
+          const { data: newProfile, error: insertError } = await supabase
             .from('profiles')
-            .select('*')
-            .eq('id', data.user.id)
+            .upsert({
+              id: data.user.id,
+              email,
+              company_name: companyName,
+              role: 'Trader',
+              kyc_status: 'None',
+            })
+            .select()
             .single();
 
-          if (profileError) {
-            // If profile isn't ready yet, we can manually insert or just show a message
-            const { data: newProfile, error: insertError } = await supabase
-              .from('profiles')
-              .upsert({
-                id: data.user.id,
-                email: email,
-                company_name: companyName,
-                role: 'Trader',
-                kyc_status: 'None'
-              })
-              .select()
-              .single();
-            
-            if (insertError) throw insertError;
-            onLogin(newProfile as User);
-          } else {
-            onLogin(profile as User);
-          }
+          if (insertError) throw insertError;
+          profile = newProfile as User;
         }
+
+        onLogin(profile);
       }
     } catch (err: any) {
       setError(err.message || 'An error occurred during authentication');
@@ -129,6 +151,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
               <AnimatePresence mode="wait">
                 {error && (
                   <motion.div
+                    key="error"
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: 'auto' }}
                     exit={{ opacity: 0, height: 0 }}
@@ -136,6 +159,18 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                   >
                     <AlertCircle className="w-4 h-4 shrink-0" />
                     {error}
+                  </motion.div>
+                )}
+                {infoMessage && !error && (
+                  <motion.div
+                    key="info"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg flex items-center gap-3 text-emerald-700 text-sm"
+                  >
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    {infoMessage}
                   </motion.div>
                 )}
               </AnimatePresence>
