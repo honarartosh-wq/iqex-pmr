@@ -1,14 +1,22 @@
 import { supabase } from '../lib/supabase';
 import { MarketConfig, MarketPrice, MetalType } from '../types';
-import { tradingViewService } from './tradingViewService';
+import { tradingViewService, LivePrice } from './tradingViewService';
 
-export const fetchMarketPrices = async (config: MarketConfig): Promise<MarketPrice[]> => {
-  const globalPrices = tradingViewService.getPrices();
-  const metals: MetalType[] = ['Gold', 'Silver', 'Platinum', 'Palladium'];
-  
-  return metals.map(metal => {
-    const symbol = metal === 'Gold' ? 'XAUUSD' : metal === 'Silver' ? 'XAGUSD' : metal === 'Platinum' ? 'XPTUSD' : 'XPDUSD';
-    const p = globalPrices[symbol];
+const METAL_SYMBOLS: Record<MetalType, string> = {
+  Gold: 'XAUUSD',
+  Silver: 'XAGUSD',
+  Platinum: 'XPTUSD',
+  Palladium: 'XPDUSD',
+};
+
+const METALS: MetalType[] = ['Gold', 'Silver', 'Platinum', 'Palladium'];
+
+export const mapLivePricesToMarketPrices = (
+  config: MarketConfig,
+  livePrices: Record<string, LivePrice>
+): MarketPrice[] => {
+  return METALS.map(metal => {
+    const p = livePrices[METAL_SYMBOLS[metal]];
     if (!p) return {
       metal,
       global_price_usd: 0,
@@ -20,8 +28,7 @@ export const fetchMarketPrices = async (config: MarketConfig): Promise<MarketPri
       change_24h: 0
     };
 
-    const premium = config.premiums[metal].usd_per_kg / 32.1507; // Convert KG premium to Ounce
-    
+    const premium = config.premiums[metal].usd_per_kg / 32.1507;
     return {
       metal,
       global_price_usd: p.price,
@@ -35,6 +42,10 @@ export const fetchMarketPrices = async (config: MarketConfig): Promise<MarketPri
       high_24h: p.high24h
     };
   });
+};
+
+export const fetchMarketPrices = async (config: MarketConfig): Promise<MarketPrice[]> => {
+  return mapLivePricesToMarketPrices(config, tradingViewService.getPrices());
 };
 
 export const calculateIraqiIndex = (config: MarketConfig): number => {

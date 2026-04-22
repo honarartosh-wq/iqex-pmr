@@ -845,6 +845,62 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   </Card>
                 </div>
 
+                {/* ── BULK RATE OVERRIDE ──────────────────────────────── */}
+                <Card className="border-primary/20">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-xs font-black uppercase tracking-[0.2em] flex items-center gap-2 text-primary">
+                      <ArrowLeftRight className="w-4 h-4" />
+                      Bulk Rate Override
+                    </CardTitle>
+                    <CardDescription className="text-[10px]">Apply a USD/IQD rate to multiple cities at once. Select cities below, set the rates, then apply.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex flex-wrap gap-2">
+                      {Object.keys(config.city_rates).map(city => (
+                        <button
+                          key={city}
+                          onClick={() => toggleCitySelection(city)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest transition-all border ${
+                            selectedCities.includes(city)
+                              ? 'bg-primary text-primary-foreground border-primary'
+                              : 'bg-background text-muted-foreground border-border hover:border-primary/50'
+                          }`}
+                        >
+                          {city}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] uppercase font-bold text-muted-foreground">Bid Rate (IQD)</label>
+                        <Input
+                          type="number"
+                          className="h-10 font-mono"
+                          value={bulkRates.bid}
+                          onChange={(e) => setBulkRates(prev => ({ ...prev, bid: Number(e.target.value) }))}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] uppercase font-bold text-muted-foreground">Ask Rate (IQD)</label>
+                        <Input
+                          type="number"
+                          className="h-10 font-mono"
+                          value={bulkRates.ask}
+                          onChange={(e) => setBulkRates(prev => ({ ...prev, ask: Number(e.target.value) }))}
+                        />
+                      </div>
+                    </div>
+                    <Button
+                      onClick={applyBulkUpdate}
+                      disabled={selectedCities.length === 0}
+                      variant="outline"
+                      className="w-full font-bold uppercase tracking-widest text-xs"
+                    >
+                      Apply to {selectedCities.length} {selectedCities.length === 1 ? 'city' : 'cities'}
+                    </Button>
+                  </CardContent>
+                </Card>
+
                 {/* ── CITY CONFIGURATION PANEL ─────────────────────────── */}
                 <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
                   <div className="xl:col-span-2 space-y-8">
