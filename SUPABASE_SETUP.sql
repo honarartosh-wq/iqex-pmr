@@ -98,6 +98,9 @@ DROP POLICY IF EXISTS "Admins can manage all orders" ON public.orders;
 CREATE POLICY "Admins can manage all orders" ON public.orders FOR ALL USING (public.is_admin());
 
 -- Insert initial config
+-- NOTE: The UI expects the full shape described in src/types/index.ts
+-- (MarketConfig). Missing keys (e.g. local_prices.Gold) cause
+-- "Cannot convert undefined or null to object" in the admin portal.
 INSERT INTO public.market_config (id, data)
 VALUES ('current', '{
   "usd_iqd_index": 1480,
@@ -108,12 +111,28 @@ VALUES ('current', '{
     "Basra": {"bid": 1470, "ask": 1490, "transfer_fees": {"UAE": {"to_usd": 160, "from_usd": -130}}}
   },
   "premiums": {
-    "Gold": {"usd_per_kg": 450},
-    "Silver": {"usd_per_kg": 15},
-    "Platinum": {"usd_per_kg": 200},
-    "Palladium": {"usd_per_kg": 300}
+    "Gold": {"usd_per_kg": 450, "iqd_per_kg": 666000},
+    "Silver": {"usd_per_kg": 15, "iqd_per_kg": 22200},
+    "Platinum": {"usd_per_kg": 200, "iqd_per_kg": 296000},
+    "Palladium": {"usd_per_kg": 300, "iqd_per_kg": 444000}
   },
-  "transfer_fees": {},
-  "local_prices": {}
+  "transfer_fees": {
+    "Türkiye": {"to_usd_per_10k": 50, "from_usd_per_10k": 40},
+    "UAE": {"to_usd_per_10k": 45, "from_usd_per_10k": 35}
+  },
+  "local_prices": {
+    "Gold": {
+      "24K": {"bid_iqd": 98500, "ask_iqd": 99200},
+      "22K": {"bid_iqd": 90200, "ask_iqd": 90900},
+      "21K": {"bid_iqd": 86100, "ask_iqd": 86800},
+      "18K": {"bid_iqd": 73800, "ask_iqd": 74500}
+    },
+    "Silver": {
+      "999": {"bid_iqd": 1250, "ask_iqd": 1350},
+      "925": {"bid_iqd": 1150, "ask_iqd": 1250}
+    },
+    "Platinum": {"bid_iqd": 45000, "ask_iqd": 46500},
+    "Palladium": {"bid_iqd": 48000, "ask_iqd": 49500}
+  }
 }')
 ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data;
