@@ -26,6 +26,7 @@ class TradingViewService {
   private callbacks: ((prices: Record<string, LivePrice>) => void)[] = [];
   private simInterval: ReturnType<typeof setInterval> | null = null;
   private fetchInterval: ReturnType<typeof setInterval> | null = null;
+  private proxyDisabled = false;
 
   constructor() {
     this.fetchRealPrices();
@@ -54,12 +55,21 @@ class TradingViewService {
   }
 
   private async fetchRealPrices() {
+    if (this.proxyDisabled) return;
+
     const symbols = ['XAU', 'XAG', 'XPT', 'XPD'];
+    let successCount = 0;
+    let proxyMissing = false;
 
     await Promise.all(symbols.map(async (s) => {
       try {
         const response = await fetch(`/api/prices/${s}`);
-        if (!response.ok) return;
+        if (!response.ok) {
+          // 404 means the server-side proxy isn't deployed in this environment
+          // (e.g. static-only hosting). Stop polling to avoid console spam.
+          if (response.status === 404) proxyMissing = true;
+          return;
+        }
 
         const data = await response.json();
         const rawPrice = typeof data?.price === 'string' ? parseFloat(data.price) : data?.price;
@@ -76,10 +86,20 @@ class TradingViewService {
           ask: rawPrice * 1.0002,
           lastUpdated: Date.now(),
         };
+        successCount += 1;
       } catch (error) {
-        console.warn(`Failed to fetch price for ${s} via proxy:`, error);
+        // Network error (not an HTTP status); let the interval retry.
       }
     }));
+
+    if (proxyMissing && successCount === 0) {
+      this.proxyDisabled = true;
+      if (this.fetchInterval !== null) {
+        clearInterval(this.fetchInterval);
+        this.fetchInterval = null;
+      }
+      console.info('[tradingView] Price proxy unavailable; using simulated prices.');
+    }
 
     this.notify();
   }
