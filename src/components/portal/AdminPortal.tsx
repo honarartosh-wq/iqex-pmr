@@ -212,6 +212,17 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     setConfig(marketConfig);
   }, [marketConfig]);
 
+  // Snap selectedConfigCity back to a valid city if the current one disappears
+  // from the config (e.g. another admin removed it). Otherwise the market tab
+  // crashes with "Cannot read properties of undefined" when it tries to read
+  // config.city_rates[selectedConfigCity].local_prices.
+  useEffect(() => {
+    const cities = Object.keys(config.city_rates);
+    if (cities.length > 0 && !config.city_rates[selectedConfigCity]) {
+      setSelectedConfigCity(cities[0]);
+    }
+  }, [config.city_rates, selectedConfigCity]);
+
   // Notify about pending KYC
   useEffect(() => {
     if (pendingKYC.length > 0) {
@@ -283,6 +294,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       const newConfig: MarketConfig = JSON.parse(JSON.stringify(prev));
       let current: any = newConfig;
       for (let i = 0; i < keys.length - 1; i++) {
+        // Create missing intermediate nodes. Necessary because per-city
+        // local_prices is optional in the schema — when an admin edits a
+        // karat for a city that never had one, the path doesn't exist yet.
+        if (current[keys[i]] === undefined || current[keys[i]] === null) {
+          current[keys[i]] = {};
+        }
         current = current[keys[i]];
       }
       current[keys[keys.length - 1]] = value;
@@ -316,26 +333,29 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       // 4. If a City Rate changes
       if (path.startsWith('city_rates.') && path.endsWith('.ask')) {
         const city = keys[1];
-        const oldRate = prev.city_rates[city].ask || prev.usd_iqd_index;
+        const oldRate = prev.city_rates[city]?.ask || prev.usd_iqd_index;
         const newRate = value;
-        
-        // 4a. Update local metal prices
-        if (newConfig.city_rates[city].local_prices) {
-          // ... existing gold/silver update logic ...
-          Object.keys(newConfig.city_rates[city].local_prices.Gold).forEach(karat => {
-            const p = newConfig.city_rates[city].local_prices.Gold[karat];
+        const cityLocalPrices = newConfig.city_rates[city]?.local_prices;
+
+        // 4a. Update local metal prices (only if this city has its own
+        // local_prices overrides — Gold/Silver records may still be absent)
+        if (cityLocalPrices?.Gold) {
+          Object.keys(cityLocalPrices.Gold).forEach(karat => {
+            const p = cityLocalPrices.Gold[karat];
             const usd_bid = p.bid_iqd / oldRate;
             const usd_ask = p.ask_iqd / oldRate;
-            newConfig.city_rates[city].local_prices.Gold[karat] = {
+            cityLocalPrices.Gold[karat] = {
               bid_iqd: Math.round(usd_bid * newRate),
               ask_iqd: Math.round(usd_ask * newRate)
             };
           });
-          Object.keys(newConfig.city_rates[city].local_prices.Silver).forEach(purity => {
-            const p = newConfig.city_rates[city].local_prices.Silver[purity];
+        }
+        if (cityLocalPrices?.Silver) {
+          Object.keys(cityLocalPrices.Silver).forEach(purity => {
+            const p = cityLocalPrices.Silver[purity];
             const usd_bid = p.bid_iqd / oldRate;
             const usd_ask = p.ask_iqd / oldRate;
-            newConfig.city_rates[city].local_prices.Silver[purity] = {
+            cityLocalPrices.Silver[purity] = {
               bid_iqd: Math.round(usd_bid * newRate),
               ask_iqd: Math.round(usd_ask * newRate)
             };
@@ -919,8 +939,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                           <div className="space-y-4">
                             <h4 className="text-[10px] uppercase font-black text-muted-foreground tracking-widest border-l-2 border-amber-500 pl-2">Gold Karats (Per Gram)</h4>
                             <div className="space-y-4">
-                              {Object.entries(config.city_rates[selectedConfigCity].local_prices?.Gold || config.local_prices.Gold).map(([karat, p]) => {
-                                const cityRate = config.city_rates[selectedConfigCity].ask || config.usd_iqd_index;
+                              {Object.entries(config.city_rates[selectedConfigCity]?.local_prices?.Gold || config.local_prices?.Gold || {}).map(([karat, p]) => {
+                                const cityRate = config.city_rates[selectedConfigCity]?.ask || config.usd_iqd_index;
                                 return (
                                   <div key={karat} className="p-3 rounded-xl bg-muted/10 border border-transparent hover:border-amber-500/20 transition-all space-y-3">
                                     <div className="flex items-center justify-between">
@@ -983,8 +1003,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                           <div className="space-y-4">
                             <h4 className="text-[10px] uppercase font-black text-muted-foreground tracking-widest border-l-2 border-slate-400 pl-2">Silver Purities</h4>
                             <div className="space-y-4">
-                              {Object.entries(config.city_rates[selectedConfigCity].local_prices?.Silver || config.local_prices.Silver).map(([purity, p]) => {
-                                const cityRate = config.city_rates[selectedConfigCity].ask || config.usd_iqd_index;
+                              {Object.entries(config.city_rates[selectedConfigCity]?.local_prices?.Silver || config.local_prices?.Silver || {}).map(([purity, p]) => {
+                                const cityRate = config.city_rates[selectedConfigCity]?.ask || config.usd_iqd_index;
                                 return (
                                   <div key={purity} className="p-3 rounded-xl bg-muted/10 border border-transparent hover:border-slate-400/20 transition-all space-y-3">
                                     <div className="flex items-center justify-between">
@@ -1081,7 +1101,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                           <CardTitle className="text-[10px] font-black uppercase tracking-widest text-primary">Transfer Fees: {selectedConfigCity}</CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                          {Object.entries(config.city_rates[selectedConfigCity].transfer_fees).map(([country, fees]) => (
+                          {Object.entries(config.city_rates[selectedConfigCity]?.transfer_fees || {}).map(([country, fees]) => (
                             <div key={country} className="grid grid-cols-3 gap-3 items-center">
                               <span className="text-[10px] font-bold uppercase text-muted-foreground">{country}</span>
                               <div className="relative">

@@ -141,11 +141,16 @@ export const TraderPortal: React.FC<TraderPortalProps> = ({
     // Subscribe to changes
     const subscription = negotiationService.subscribeToUserNegotiations(user.id, (payload) => {
       if (payload.eventType === 'INSERT') {
+        if (!payload.new) return;
         setUserNegotiations(prev => [payload.new as Negotiation, ...prev]);
       } else if (payload.eventType === 'UPDATE') {
-        setUserNegotiations(prev => prev.map(n => n.id === payload.new.id ? payload.new as Negotiation : n));
+        const next = payload.new as Negotiation | null;
+        if (!next?.id) return;
+        setUserNegotiations(prev => prev.map(n => n.id === next.id ? next : n));
       } else if (payload.eventType === 'DELETE') {
-        setUserNegotiations(prev => prev.filter(n => n.id !== payload.old.id));
+        const removedId = (payload.old as Negotiation | null)?.id;
+        if (!removedId) return;
+        setUserNegotiations(prev => prev.filter(n => n.id !== removedId));
       }
     });
 

@@ -201,34 +201,39 @@ export const NegotiationPanel: React.FC<NegotiationPanelProps> = ({ order, curre
       buyer_id: buyerId,
       seller_id: sellerId,
       metal: order.metal,
-      quantity: msg.offer_quantity || order.quantity,
+      quantity: msg.offer_quantity ?? order.quantity,
       unit: order.unit,
-      price: msg.offer_price || order.price_per_unit,
+      price: msg.offer_price ?? order.price_per_unit,
       currency: order.currency
     });
 
-    if (trade) {
-      const contract = await contractService.createContract({
-        trade_id: trade.id,
-        buyer_id: buyerId,
-        seller_id: sellerId,
-        buyer_name: buyerName,
-        seller_name: sellerName,
-        metal: order.metal,
-        quantity: trade.quantity,
-        unit: trade.unit,
-        price: trade.price,
-        currency: trade.currency,
-        buyer_signature: buyerName, // Simple digital signature for now
-        seller_signature: sellerName
-      });
-
-      if (contract) {
-        setCreatedContract(contract);
-        // Update order status to Completed
-        await orderService.updateOrderStatus(order.id, 'Completed');
-      }
+    if (!trade) {
+      console.error('Trade creation failed; aborting contract + order completion');
+      return;
     }
+
+    const contract = await contractService.createContract({
+      trade_id: trade.id,
+      buyer_id: buyerId,
+      seller_id: sellerId,
+      buyer_name: buyerName,
+      seller_name: sellerName,
+      metal: order.metal,
+      quantity: trade.quantity,
+      unit: trade.unit,
+      price: trade.price,
+      currency: trade.currency,
+      buyer_signature: buyerName, // Simple digital signature for now
+      seller_signature: sellerName
+    });
+
+    if (!contract) {
+      console.error('Contract creation failed; trade row was created but order will not be marked Completed');
+      return;
+    }
+
+    setCreatedContract(contract);
+    await orderService.updateOrderStatus(order.id, 'Completed');
 
     setIsCompleted(true);
     setNegStatus('Accepted');
