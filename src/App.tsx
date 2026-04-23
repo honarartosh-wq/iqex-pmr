@@ -40,20 +40,20 @@ export default function App() {
       setInitError(null);
       
       // 1. Production Connectivity Check
+      // Use the public /auth/v1/settings endpoint — it returns 200 with a
+      // valid apikey, so the browser console doesn't log a misleading 401
+      // like /rest/v1/ (which requires a table path).
       console.log('[IQEX] Verifying production environment...');
       try {
-        const fetchPromise = fetch(`${supabaseUrl}/rest/v1/`, {
-          method: 'HEAD',
-          headers: { 'apikey': supabaseKey }
-        });
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        const timeoutFetch = new Promise((_, reject) => {
-          timeoutId = setTimeout(() => reject(new Error('timeout')), 15000);
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
         try {
-          await Promise.race([fetchPromise, timeoutFetch]);
+          await fetch(`${supabaseUrl}/auth/v1/settings`, {
+            headers: { 'apikey': supabaseKey },
+            signal: controller.signal,
+          });
         } finally {
-          if (timeoutId !== undefined) clearTimeout(timeoutId);
+          clearTimeout(timeoutId);
         }
       } catch (e) {
         throw new Error('Secure connection to IQEX Trading Floor failed. Please check your network or project status.');
