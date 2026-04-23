@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { MarketConfig, MarketPrice, MetalType } from '../types';
 import { tradingViewService, LivePrice } from './tradingViewService';
+import { INITIAL_CONFIG } from '../constants';
 
 const METAL_SYMBOLS: Record<MetalType, string> = {
   Gold: 'XAUUSD',
@@ -10,6 +11,39 @@ const METAL_SYMBOLS: Record<MetalType, string> = {
 };
 
 const METALS: MetalType[] = ['Gold', 'Silver', 'Platinum', 'Palladium'];
+
+// The DB may hold a partial config (e.g. `local_prices: {}` from the seed in
+// SUPABASE_SETUP.sql). The UI expects the full shape — missing keys cause
+// "Cannot convert undefined or null to object" when Object.entries runs over
+// an undefined subtree. Merge with the initial defaults so the shape is
+// always complete.
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+const deepMerge = <T>(base: T, override: unknown): T => {
+  if (!isPlainObject(base) || !isPlainObject(override)) {
+    return (override ?? base) as T;
+  }
+  const out: Record<string, unknown> = { ...base };
+  for (const [k, v] of Object.entries(override)) {
+    out[k] = deepMerge((base as Record<string, unknown>)[k], v);
+  }
+  return out as T;
+};
+
+export const normalizeConfig = (raw: unknown): MarketConfig => {
+  const merged = deepMerge(INITIAL_CONFIG, raw);
+  // Ensure every premium entry has both usd_per_kg and iqd_per_kg. The seed
+  // only supplies usd_per_kg, so derive iqd_per_kg from the default rate.
+  (Object.keys(merged.premiums) as MetalType[]).forEach(metal => {
+    const p = merged.premiums[metal] ?? { usd_per_kg: 0, iqd_per_kg: 0 };
+    merged.premiums[metal] = {
+      usd_per_kg: p.usd_per_kg ?? 0,
+      iqd_per_kg: p.iqd_per_kg ?? Math.round((p.usd_per_kg ?? 0) * merged.usd_iqd_index),
+    };
+  });
+  return merged;
+};
 
 export const mapLivePricesToMarketPrices = (
   config: MarketConfig,
@@ -104,7 +138,7 @@ export const marketService = {
       return null;
     }
 
-    return (data as any).data as MarketConfig;
+    return normalizeConfig((data as any).data);
   },
 
   async updateConfig(config: MarketConfig): Promise<boolean> {
@@ -132,7 +166,7 @@ export const marketService = {
         { event: '*', table: 'market_config', schema: 'public' },
         (payload) => {
           if (payload.new && (payload.new as any).data) {
-            callback((payload.new as any).data as MarketConfig);
+            callback(normalizeConfig((payload.new as any).data));
           }
         }
       )
