@@ -180,7 +180,7 @@ export const Bazaar: React.FC<BazaarProps> = ({ embedded = false, config, displa
       transfer_fees: cityRate.transfer_fees,
     }] : [];
 
-    const goldRows = Object.entries(config.local_prices.Gold).map(([karat, p]) => {
+    const goldRows = Object.entries(config.local_prices?.Gold ?? {}).map(([karat, p]) => {
       const pricesData = p as { bid_iqd: number; ask_iqd: number };
       return {
         name: `Gold ${karat}`,
@@ -192,7 +192,7 @@ export const Bazaar: React.FC<BazaarProps> = ({ embedded = false, config, displa
       };
     });
 
-    const silverRows = Object.entries(config.local_prices.Silver).map(([purity, p]) => {
+    const silverRows = Object.entries(config.local_prices?.Silver ?? {}).map(([purity, p]) => {
       const pricesData = p as { bid_iqd: number; ask_iqd: number };
       return {
         name: `Silver ${purity}`,
