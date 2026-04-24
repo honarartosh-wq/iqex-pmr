@@ -27,6 +27,7 @@ import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { User, Order, MarketConfig, MetalType, Notification } from '../../types';
+import { INITIAL_CONFIG } from '../../constants';
 import { NotificationCenter } from '../shared/NotificationCenter';
 import { matchingEngine, MatchResult } from '../../services/matchingEngine';
 import { motion, AnimatePresence } from 'motion/react';
@@ -284,13 +285,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
       // Seed a city's per-city syndicate prices from the global defaults the
       // first time an admin edits them - otherwise the path walk below hits
-      // `undefined` at `local_prices` and throws.
+      // `undefined` at `local_prices` and throws. Fall back to INITIAL_CONFIG
+      // if the top-level `local_prices` is also missing from the loaded config.
       if (keys[0] === 'city_rates' && keys.length >= 3 && keys[2] === 'local_prices') {
         const city = keys[1];
         if (newConfig.city_rates[city] && !newConfig.city_rates[city].local_prices) {
-          newConfig.city_rates[city].local_prices = JSON.parse(
-            JSON.stringify(newConfig.local_prices)
-          );
+          const seed = newConfig.local_prices ?? INITIAL_CONFIG.local_prices;
+          newConfig.city_rates[city].local_prices = JSON.parse(JSON.stringify(seed));
         }
       }
 
@@ -333,25 +334,28 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         const oldRate = prev.city_rates[city].ask || prev.usd_iqd_index;
         const newRate = value;
         
-        // 4a. Update local metal prices
-        if (newConfig.city_rates[city].local_prices) {
-          // ... existing gold/silver update logic ...
-          Object.keys(newConfig.city_rates[city].local_prices.Gold).forEach(karat => {
-            const p = newConfig.city_rates[city].local_prices.Gold[karat];
+        // 4a. Update local metal prices (only if the city has its own
+        // syndicate price overrides; Gold/Silver subtrees may also be absent).
+        const cityLocal = newConfig.city_rates[city]?.local_prices;
+        if (cityLocal?.Gold) {
+          Object.keys(cityLocal.Gold).forEach(karat => {
+            const p = cityLocal.Gold[karat];
             const usd_bid = p.bid_iqd / oldRate;
             const usd_ask = p.ask_iqd / oldRate;
-            newConfig.city_rates[city].local_prices.Gold[karat] = {
+            cityLocal.Gold[karat] = {
               bid_iqd: Math.round(usd_bid * newRate),
-              ask_iqd: Math.round(usd_ask * newRate)
+              ask_iqd: Math.round(usd_ask * newRate),
             };
           });
-          Object.keys(newConfig.city_rates[city].local_prices.Silver).forEach(purity => {
-            const p = newConfig.city_rates[city].local_prices.Silver[purity];
+        }
+        if (cityLocal?.Silver) {
+          Object.keys(cityLocal.Silver).forEach(purity => {
+            const p = cityLocal.Silver[purity];
             const usd_bid = p.bid_iqd / oldRate;
             const usd_ask = p.ask_iqd / oldRate;
-            newConfig.city_rates[city].local_prices.Silver[purity] = {
+            cityLocal.Silver[purity] = {
               bid_iqd: Math.round(usd_bid * newRate),
-              ask_iqd: Math.round(usd_ask * newRate)
+              ask_iqd: Math.round(usd_ask * newRate),
             };
           });
         }
@@ -955,8 +959,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                           <div className="space-y-4">
                             <h4 className="text-[10px] uppercase font-black text-muted-foreground tracking-widest border-l-2 border-amber-500 pl-2">Gold Karats (Per Gram)</h4>
                             <div className="space-y-4">
-                              {Object.entries(config.city_rates[selectedConfigCity].local_prices?.Gold || config.local_prices.Gold).map(([karat, p]) => {
-                                const cityRate = config.city_rates[selectedConfigCity].ask || config.usd_iqd_index;
+                              {Object.entries(config.city_rates[selectedConfigCity]?.local_prices?.Gold ?? config.local_prices?.Gold ?? INITIAL_CONFIG.local_prices.Gold).map(([karat, p]) => {
+                                const cityRate = config.city_rates[selectedConfigCity]?.ask || config.usd_iqd_index;
                                 return (
                                   <div key={karat} className="p-3 rounded-xl bg-muted/10 border border-transparent hover:border-amber-500/20 transition-all space-y-3">
                                     <div className="flex items-center justify-between">
@@ -1019,8 +1023,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                           <div className="space-y-4">
                             <h4 className="text-[10px] uppercase font-black text-muted-foreground tracking-widest border-l-2 border-slate-400 pl-2">Silver Purities</h4>
                             <div className="space-y-4">
-                              {Object.entries(config.city_rates[selectedConfigCity].local_prices?.Silver || config.local_prices.Silver).map(([purity, p]) => {
-                                const cityRate = config.city_rates[selectedConfigCity].ask || config.usd_iqd_index;
+                              {Object.entries(config.city_rates[selectedConfigCity]?.local_prices?.Silver ?? config.local_prices?.Silver ?? INITIAL_CONFIG.local_prices.Silver).map(([purity, p]) => {
+                                const cityRate = config.city_rates[selectedConfigCity]?.ask || config.usd_iqd_index;
                                 return (
                                   <div key={purity} className="p-3 rounded-xl bg-muted/10 border border-transparent hover:border-slate-400/20 transition-all space-y-3">
                                     <div className="flex items-center justify-between">
