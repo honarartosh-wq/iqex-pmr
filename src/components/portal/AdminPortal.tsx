@@ -181,7 +181,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const [activeAdminTab, setActiveAdminTab] = useState('kyc');
   const [reviewingUser, setReviewingUser] = useState<User | null>(null);
   const [selectedConfigCity, setSelectedConfigCity] = useState<string>('Baghdad');
-  const [selectedCities, setSelectedCities] = useState<string[]>(['Baghdad']);
   const [selectedTransferCountry, setSelectedTransferCountry] = useState<string>('Türkiye');
   const [citySearch, setCitySearch] = useState('');
   const [notifications, setNotifications] = useState<Notification[]>([
@@ -194,15 +193,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       is_read: false,
     }
   ]);
-
-  const [bulkRates, setBulkRates] = useState({
-    bid: 1310,
-    ask: 1315,
-    transfer_fees: {
-      'Türkiye': { to_usd: 50, from_usd: 40 },
-      'UAE': { to_usd: 45, from_usd: 35 }
-    }
-  });
 
   const pendingKYC = users.filter(u => u.kyc_status === 'Pending');
   const activeOrders = orders.filter(o => o.status === 'Open' || o.status === 'Negotiating');
@@ -333,24 +323,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     setNotifications(prev => [successNotif, ...prev]);
   };
 
-  const applyBulkUpdate = () => {
-    if (selectedCities.length === 0) return;
-
-    setConfig(prev => {
-      const newConfig: MarketConfig = JSON.parse(JSON.stringify(prev));
-      selectedCities.forEach(city => {
-        // Mutate only the fields the bulk panel controls so unrelated
-        // data (local_prices, any future per-city fields) is preserved.
-        const entry = newConfig.city_rates[city] ?? ({} as MarketConfig['city_rates'][string]);
-        entry.bid = bulkRates.bid;
-        entry.ask = bulkRates.ask;
-        entry.transfer_fees = JSON.parse(JSON.stringify(bulkRates.transfer_fees));
-        newConfig.city_rates[city] = entry;
-      });
-      return newConfig;
-    });
-  };
-
   const updateConfig = (path: string, value: any) => {
     const keys = path.split('.');
     setConfig(prev => {
@@ -412,14 +384,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
       return newConfig;
     });
-  };
-
-  const toggleCitySelection = (city: string) => {
-    setSelectedCities(prev => 
-      prev.includes(city) 
-        ? prev.filter(c => c !== city) 
-        : [...prev, city]
-    );
   };
 
   const navItems = [
@@ -835,40 +799,26 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
             {activeAdminTab === 'market' && (
               <div className="space-y-8">
-                {/* ── GLOBAL INDEX WIDGET ────────────────────────────── */}
+                {/* ── PLATFORM SETTINGS + CITY SELECTION ─────────────── */}
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                  <Card className="lg:col-span-1 border-amber-500/20 bg-amber-500/5 shadow-sm">
+                  <Card className="lg:col-span-1 border-primary/20 bg-primary/5 shadow-sm">
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-xs font-black uppercase tracking-[0.2em] flex items-center gap-2 text-amber-600">
-                        <Globe className="w-4 h-4" />
-                        Global Index
+                      <CardTitle className="text-xs font-black uppercase tracking-[0.2em] flex items-center gap-2 text-primary">
+                        <Settings className="w-4 h-4" />
+                        Platform Settings
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="space-y-4">
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] uppercase font-bold text-muted-foreground">USD/IQD Benchmark</label>
-                          <div className="relative">
-                            <Input 
-                              type="number"
-                              className="pl-3 font-mono font-black text-lg h-12 bg-background border-amber-500/20 focus:border-amber-500" 
-                              value={config.usd_iqd_index}
-                              onChange={(e) => updateConfig('usd_iqd_index', Number(e.target.value))}
-                            />
-                            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-amber-600 bg-amber-500/10 px-2 py-1 rounded">IQD</div>
-                          </div>
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] uppercase font-bold text-muted-foreground">Monthly Subscription Fee</label>
-                          <div className="relative">
-                            <Input 
-                              type="number"
-                              className="pl-3 font-mono font-black text-lg h-12 bg-background border-primary/20 focus:border-primary" 
-                              value={config.subscription_fee_iqd}
-                              onChange={(e) => updateConfig('subscription_fee_iqd', Number(e.target.value))}
-                            />
-                            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-primary bg-primary/10 px-2 py-1 rounded">IQD</div>
-                          </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] uppercase font-bold text-muted-foreground">Monthly Subscription Fee</label>
+                        <div className="relative">
+                          <Input
+                            type="number"
+                            className="pl-3 font-mono font-black text-lg h-12 bg-background border-primary/20 focus:border-primary"
+                            value={config.subscription_fee_iqd}
+                            onChange={(e) => updateConfig('subscription_fee_iqd', Number(e.target.value))}
+                          />
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-primary bg-primary/10 px-2 py-1 rounded">IQD</div>
                         </div>
                       </div>
                     </CardContent>
@@ -922,62 +872,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     </CardContent>
                   </Card>
                 </div>
-
-                {/* ── BULK RATE OVERRIDE ──────────────────────────────── */}
-                <Card className="border-primary/20">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-xs font-black uppercase tracking-[0.2em] flex items-center gap-2 text-primary">
-                      <ArrowLeftRight className="w-4 h-4" />
-                      Bulk Rate Override
-                    </CardTitle>
-                    <CardDescription className="text-[10px]">Apply a USD/IQD rate to multiple cities at once. Select cities below, set the rates, then apply.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex flex-wrap gap-2">
-                      {Object.keys(config.city_rates).map(city => (
-                        <button
-                          key={city}
-                          onClick={() => toggleCitySelection(city)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest transition-all border ${
-                            selectedCities.includes(city)
-                              ? 'bg-primary text-primary-foreground border-primary'
-                              : 'bg-background text-muted-foreground border-border hover:border-primary/50'
-                          }`}
-                        >
-                          {city}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase font-bold text-muted-foreground">Bid Rate (IQD)</label>
-                        <Input
-                          type="number"
-                          className="h-10 font-mono"
-                          value={bulkRates.bid}
-                          onChange={(e) => setBulkRates(prev => ({ ...prev, bid: Number(e.target.value) }))}
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase font-bold text-muted-foreground">Ask Rate (IQD)</label>
-                        <Input
-                          type="number"
-                          className="h-10 font-mono"
-                          value={bulkRates.ask}
-                          onChange={(e) => setBulkRates(prev => ({ ...prev, ask: Number(e.target.value) }))}
-                        />
-                      </div>
-                    </div>
-                    <Button
-                      onClick={applyBulkUpdate}
-                      disabled={selectedCities.length === 0}
-                      variant="outline"
-                      className="w-full font-bold uppercase tracking-widest text-xs"
-                    >
-                      Apply to {selectedCities.length} {selectedCities.length === 1 ? 'city' : 'cities'}
-                    </Button>
-                  </CardContent>
-                </Card>
 
                 {/* ── CITY CONFIGURATION PANEL ─────────────────────────── */}
                 <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
