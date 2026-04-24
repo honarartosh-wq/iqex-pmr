@@ -124,13 +124,13 @@ export interface MarketConfig {
       };
       local_prices?: {
         'Gold': {
-          [karat: string]: { bid_iqd: number; ask_iqd: number };
+          [karat: string]: { bid_iqd: number; ask_iqd: number; unit?: 'Gram' | 'Kilogram' };
         };
         'Silver': {
-          [purity: string]: { bid_iqd: number; ask_iqd: number };
+          [purity: string]: { bid_iqd: number; ask_iqd: number; unit?: 'Gram' | 'Kilogram' };
         };
-        'Platinum': { bid_iqd: number; ask_iqd: number };
-        'Palladium': { bid_iqd: number; ask_iqd: number };
+        'Platinum': { bid_iqd: number; ask_iqd: number; unit?: 'Gram' | 'Kilogram' };
+        'Palladium': { bid_iqd: number; ask_iqd: number; unit?: 'Gram' | 'Kilogram' };
       };
     };
   };
@@ -148,13 +148,13 @@ export interface MarketConfig {
   };
   local_prices: {
     'Gold': {
-      [karat: string]: { bid_iqd: number; ask_iqd: number };
+      [karat: string]: { bid_iqd: number; ask_iqd: number; unit?: 'Gram' | 'Kilogram' };
     };
     'Silver': {
-      [purity: string]: { bid_iqd: number; ask_iqd: number };
+      [purity: string]: { bid_iqd: number; ask_iqd: number; unit?: 'Gram' | 'Kilogram' };
     };
-    'Platinum': { bid_iqd: number; ask_iqd: number };
-    'Palladium': { bid_iqd: number; ask_iqd: number };
+    'Platinum': { bid_iqd: number; ask_iqd: number; unit?: 'Gram' | 'Kilogram' };
+    'Palladium': { bid_iqd: number; ask_iqd: number; unit?: 'Gram' | 'Kilogram' };
   };
 }
 

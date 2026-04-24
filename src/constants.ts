@@ -7,17 +7,23 @@ const DEFAULT_TRANSFER_FEES = {
 
 const DEFAULT_LOCAL_PRICES: MarketConfig['local_prices'] = {
   'Gold': {
-    '24K': { bid_iqd: 98500, ask_iqd: 99200 },
-    '22K': { bid_iqd: 90200, ask_iqd: 90900 },
-    '21K': { bid_iqd: 86100, ask_iqd: 86800 },
-    '18K': { bid_iqd: 73800, ask_iqd: 74500 },
+    // Jewellery karats - stored per gram (IQD/gram).
+    '24K': { bid_iqd: 98500, ask_iqd: 99200, unit: 'Gram' },
+    '22K': { bid_iqd: 90200, ask_iqd: 90900, unit: 'Gram' },
+    '21K': { bid_iqd: 86100, ask_iqd: 86800, unit: 'Gram' },
+    '18K': { bid_iqd: 73800, ask_iqd: 74500, unit: 'Gram' },
+    // 995 fine bar - stored per kilogram (IQD/kg).
+    '995': { bid_iqd: 98_000_000, ask_iqd: 98_700_000, unit: 'Kilogram' },
   },
   'Silver': {
-    '999': { bid_iqd: 1250, ask_iqd: 1350 },
-    '925': { bid_iqd: 1150, ask_iqd: 1250 },
+    // Grain/sheet purities - stored per gram (IQD/gram).
+    '999': { bid_iqd: 1250, ask_iqd: 1350, unit: 'Gram' },
+    '925': { bid_iqd: 1150, ask_iqd: 1250, unit: 'Gram' },
+    // 999.9 fine bar - stored per kilogram (IQD/kg).
+    '999.9': { bid_iqd: 1_260_000, ask_iqd: 1_360_000, unit: 'Kilogram' },
   },
-  'Platinum': { bid_iqd: 45000, ask_iqd: 46500 },
-  'Palladium': { bid_iqd: 48000, ask_iqd: 49500 },
+  'Platinum': { bid_iqd: 45000, ask_iqd: 46500, unit: 'Gram' },
+  'Palladium': { bid_iqd: 48000, ask_iqd: 49500, unit: 'Gram' },
 };
 
 // All 19 Iraqi governorates (18 federal + Halabja, split from Sulaymaniyah in 2014).

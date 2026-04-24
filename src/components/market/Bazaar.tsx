@@ -181,25 +181,25 @@ export const Bazaar: React.FC<BazaarProps> = ({ embedded = false, config, displa
     }] : [];
 
     const goldRows = Object.entries(config.local_prices?.Gold ?? {}).map(([karat, p]) => {
-      const pricesData = p as { bid_iqd: number; ask_iqd: number };
+      const pricesData = p as { bid_iqd: number; ask_iqd: number; unit?: 'Gram' | 'Kilogram' };
       return {
         name: `Gold ${karat}`,
         bid: pricesData.bid_iqd,
         ask: pricesData.ask_iqd,
         spread: pricesData.ask_iqd - pricesData.bid_iqd,
-        unit: 'Gram',
+        unit: pricesData.unit ?? 'Gram',
         group: 'gold',
       };
     });
 
     const silverRows = Object.entries(config.local_prices?.Silver ?? {}).map(([purity, p]) => {
-      const pricesData = p as { bid_iqd: number; ask_iqd: number };
+      const pricesData = p as { bid_iqd: number; ask_iqd: number; unit?: 'Gram' | 'Kilogram' };
       return {
         name: `Silver ${purity}`,
         bid: pricesData.bid_iqd,
         ask: pricesData.ask_iqd,
         spread: pricesData.ask_iqd - pricesData.bid_iqd,
-        unit: 'Gram',
+        unit: pricesData.unit ?? 'Gram',
         group: 'silver',
       };
     });

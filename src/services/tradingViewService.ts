@@ -27,13 +27,21 @@ class TradingViewService {
   private simInterval: ReturnType<typeof setInterval> | null = null;
   private fetchInterval: ReturnType<typeof setInterval> | null = null;
   private proxyDisabled = false;
+  // Tracks which symbols have received at least one authoritative quote from
+  // the upstream feed (gold-api proxy). Once a symbol is live, we stop
+  // applying simulated jitter to it so the displayed spot matches the real
+  // market instead of drifting between fetches.
+  private liveSymbols: Set<string> = new Set();
 
   constructor() {
     this.fetchRealPrices();
-    // Start simulation of live updates for smooth UI
+    // Pre-fill smooth updates for symbols that haven't yet received live
+    // data, so the initial render isn't stuck on the seed values.
     this.simInterval = setInterval(() => this.simulateUpdates(), 2000);
-    // Refresh real prices every 30 seconds to stay in sync with global markets
-    this.fetchInterval = setInterval(() => this.fetchRealPrices(), 30000);
+    // Refresh real prices every 15 seconds. The server caches upstream
+    // responses for 10s, so this keeps the client close to live without
+    // hammering the proxy.
+    this.fetchInterval = setInterval(() => this.fetchRealPrices(), 15000);
 
     // Ensure intervals are torn down on Vite HMR disposal to avoid leaking
     // stale timers across module reloads.
@@ -86,6 +94,7 @@ class TradingViewService {
           ask: rawPrice * 1.0002,
           lastUpdated: Date.now(),
         };
+        this.liveSymbols.add(symbol);
         successCount += 1;
       } catch (error) {
         // Network error (not an HTTP status); let the interval retry.
@@ -105,22 +114,28 @@ class TradingViewService {
   }
 
   private simulateUpdates() {
+    let mutated = false;
     Object.keys(this.prices).forEach(symbol => {
+      // Don't simulate symbols whose real spot we already have - the auto
+      // premium panel compares against these values and must not drift.
+      if (this.liveSymbols.has(symbol)) return;
+
       const p = this.prices[symbol];
       const volatility = symbol === 'XAGUSD' ? 0.001 : 0.0002;
       const change = p.price * (Math.random() - 0.5) * volatility;
-      
+
       p.price += change;
       const spread = p.price * 0.0002;
       p.bid = p.price - spread / 2;
       p.ask = p.price + spread / 2;
       p.lastUpdated = Date.now();
-      
+
       if (p.price > p.high24h) p.high24h = p.price;
       if (p.price < p.low24h) p.low24h = p.price;
+      mutated = true;
     });
 
-    this.notify();
+    if (mutated) this.notify();
   }
 
   private notify() {
