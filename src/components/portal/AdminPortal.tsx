@@ -281,8 +281,22 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     setConfig(prev => {
       // Deep clone so nested recalculation below cannot mutate prev.
       const newConfig: MarketConfig = JSON.parse(JSON.stringify(prev));
+
+      // Seed a city's per-city syndicate prices from the global defaults the
+      // first time an admin edits them - otherwise the path walk below hits
+      // `undefined` at `local_prices` and throws.
+      if (keys[0] === 'city_rates' && keys.length >= 3 && keys[2] === 'local_prices') {
+        const city = keys[1];
+        if (newConfig.city_rates[city] && !newConfig.city_rates[city].local_prices) {
+          newConfig.city_rates[city].local_prices = JSON.parse(
+            JSON.stringify(newConfig.local_prices)
+          );
+        }
+      }
+
       let current: any = newConfig;
       for (let i = 0; i < keys.length - 1; i++) {
+        if (current[keys[i]] == null) current[keys[i]] = {};
         current = current[keys[i]];
       }
       current[keys[keys.length - 1]] = value;
