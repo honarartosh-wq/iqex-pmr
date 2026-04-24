@@ -30,6 +30,7 @@ import { User, Order, MarketConfig, MetalType, Notification } from '../../types'
 import { INITIAL_CONFIG } from '../../constants';
 import { NotificationCenter } from '../shared/NotificationCenter';
 import { matchingEngine, MatchResult } from '../../services/matchingEngine';
+import { tradingViewService, LivePrice } from '../../services/tradingViewService';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   MapPin, 
@@ -213,6 +214,66 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     setConfig(marketConfig);
   }, [marketConfig]);
 
+  // Live global spot prices (TradingView-fed) for the Auto Premium panel.
+  const [livePrices, setLivePrices] = useState<Record<string, LivePrice>>(
+    () => tradingViewService.getPrices()
+  );
+  useEffect(() => {
+    return tradingViewService.subscribe(setLivePrices);
+  }, []);
+
+  // Unit conversions: gold-api / TradingView quote in USD per troy ounce.
+  const GRAMS_PER_TROY_OZ = 31.1034768;
+  const METAL_SYMBOLS: Record<MetalType, string> = {
+    Gold: 'XAUUSD',
+    Silver: 'XAGUSD',
+    Platinum: 'XPTUSD',
+    Palladium: 'XPDUSD',
+  };
+
+  // Pick a reference local ask (in IQD/gram) per metal for the premium calc.
+  // Gold uses 24K (pure), Silver uses 999; Platinum/Palladium are stored flat.
+  const getLocalReferenceIqdPerGram = (metal: MetalType): number | null => {
+    const cityLocal = config.city_rates[selectedConfigCity]?.local_prices;
+    const local = cityLocal ?? config.local_prices;
+    if (!local) return null;
+    if (metal === 'Gold') return local.Gold?.['24K']?.ask_iqd ?? null;
+    if (metal === 'Silver') return local.Silver?.['999']?.ask_iqd ?? null;
+    const flat = local[metal] as { ask_iqd: number } | undefined;
+    return flat?.ask_iqd ?? null;
+  };
+
+  // Auto-premium per metal, derived from live spot vs. local syndicate ask.
+  // Positive = local market charges a premium over spot; negative = discount.
+  const autoPremiums: Record<MetalType, {
+    spotUsdPerOz: number;
+    spotUsdPerKg: number;
+    localUsdPerGram: number;
+    premiumUsdPerKg: number;
+    premiumUsdPerOz: number;
+    premiumIqdPerKg: number;
+    hasData: boolean;
+  }> = (['Gold', 'Silver', 'Platinum', 'Palladium'] as MetalType[]).reduce((acc, metal) => {
+    const spot = livePrices[METAL_SYMBOLS[metal]];
+    const cityRate = config.city_rates[selectedConfigCity]?.ask || config.usd_iqd_index;
+    const localIqdPerGram = getLocalReferenceIqdPerGram(metal);
+    const spotUsdPerOz = spot?.ask ?? spot?.price ?? 0;
+    const spotUsdPerGram = spotUsdPerOz / GRAMS_PER_TROY_OZ;
+    const spotUsdPerKg = spotUsdPerGram * 1000;
+    const localUsdPerGram = localIqdPerGram != null ? localIqdPerGram / cityRate : 0;
+    const premiumUsdPerGram = localUsdPerGram - spotUsdPerGram;
+    acc[metal] = {
+      spotUsdPerOz,
+      spotUsdPerKg,
+      localUsdPerGram,
+      premiumUsdPerKg: premiumUsdPerGram * 1000,
+      premiumUsdPerOz: premiumUsdPerGram * GRAMS_PER_TROY_OZ,
+      premiumIqdPerKg: premiumUsdPerGram * 1000 * cityRate,
+      hasData: spotUsdPerOz > 0 && localIqdPerGram != null,
+    };
+    return acc;
+  }, {} as any);
+
   // Notify about pending KYC
   useEffect(() => {
     if (pendingKYC.length > 0) {
@@ -246,8 +307,21 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   };
 
   const handleSaveConfig = () => {
-    onUpdateMarketConfig(config);
-    
+    // Bake the currently-displayed auto-premium into config.premiums so the
+    // downstream MarketPrice calculations (marketService) keep a usable value
+    // even when no live-spot subscription is available.
+    const nextConfig: MarketConfig = JSON.parse(JSON.stringify(config));
+    (Object.keys(nextConfig.premiums) as MetalType[]).forEach(metal => {
+      const ap = autoPremiums[metal];
+      if (ap?.hasData) {
+        nextConfig.premiums[metal] = {
+          usd_per_kg: Number(ap.premiumUsdPerKg.toFixed(2)),
+          iqd_per_kg: Math.round(ap.premiumIqdPerKg),
+        };
+      }
+    });
+    onUpdateMarketConfig(nextConfig);
+
     const successNotif: Notification = {
       id: `save-${Date.now()}`,
       title: 'Configuration Updated',
@@ -302,32 +376,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       }
       current[keys[keys.length - 1]] = value;
 
-      // Dynamic Recalculation Logic
-      const currentCityRate = newConfig.city_rates[selectedConfigCity]?.ask || newConfig.usd_iqd_index;
-
-      // 1. If Global Index changes (no longer primary for premiums, but kept for fallback or other logic)
-      if (path === 'usd_iqd_index') {
-        // We keep this for general consistency, but the UI will prioritize city rate
-      }
-
-      // 2. If a specific USD premium changes, update its IQD counterpart using SELECTED CITY RATE
-      if (path.startsWith('premiums.') && path.endsWith('.usd_per_kg')) {
-        const metal = keys[1] as MetalType;
-        newConfig.premiums[metal] = {
-          ...newConfig.premiums[metal],
-          iqd_per_kg: Math.round(value * currentCityRate)
-        };
-      }
-
-      // 3. If a specific IQD premium changes, update its USD counterpart using SELECTED CITY RATE
-      if (path.startsWith('premiums.') && path.endsWith('.iqd_per_kg')) {
-        const metal = keys[1] as MetalType;
-        newConfig.premiums[metal] = {
-          ...newConfig.premiums[metal],
-          usd_per_kg: Number((value / currentCityRate).toFixed(2))
-        };
-      }
-
       // 4. If a City Rate changes
       if (path.startsWith('city_rates.') && path.endsWith('.ask')) {
         const city = keys[1];
@@ -360,16 +408,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           });
         }
 
-        // 4b. If the updated city is the CURRENTLY SELECTED city, update the IQD premiums display
-        if (city === selectedConfigCity) {
-          Object.keys(newConfig.premiums).forEach(metal => {
-            const m = metal as MetalType;
-            newConfig.premiums[m] = {
-              ...newConfig.premiums[m],
-              iqd_per_kg: Math.round(newConfig.premiums[m].usd_per_kg * newRate)
-            };
-          });
-        }
       }
 
       return newConfig;
@@ -1150,58 +1188,96 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   </div>
 
                   <div className="space-y-6">
-                    {/* Global Premiums */}
+                    {/* Auto Premium vs Global Spot (read-only, TradingView-fed) */}
                     <Card className="shadow-md">
                       <CardHeader>
                         <CardTitle className="text-xs font-black uppercase tracking-widest flex items-center gap-2">
                           <TrendingUp className="w-4 h-4 text-emerald-600" />
-                          Metal Premiums
+                          Auto Premium vs Global Spot
                         </CardTitle>
+                        <CardDescription className="text-[10px]">
+                          Derived automatically from local syndicate ask and the TradingView spot feed. Positive = premium charged over spot; negative = local discount.
+                        </CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-6">
-                        {(Object.keys(config.premiums) as MetalType[]).map(metal => (
-                          <div key={metal} className="space-y-3 border-b border-border/50 pb-4 last:border-0 last:pb-0 group">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-black uppercase tracking-wider group-hover:text-primary transition-colors">{metal}</span>
-                              <Badge variant="outline" className="text-[8px] font-bold">Global Premium</Badge>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="space-y-1.5">
-                                <label className="text-[8px] uppercase font-black text-muted-foreground flex items-center gap-1">
-                                  <Globe className="w-2.5 h-2.5" />
-                                  USD / KG
-                                </label>
-                                <div className="relative">
-                                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-muted-foreground">$</span>
-                                  <Input 
-                                    type="number"
-                                    className="h-9 text-xs font-mono pl-6 bg-muted/20 border-transparent focus:bg-background focus:border-primary" 
-                                    value={config.premiums[metal].usd_per_kg}
-                                    onChange={(e) => updateConfig(`premiums.${metal}.usd_per_kg`, Number(e.target.value))}
-                                  />
+                        {(['Gold', 'Silver', 'Platinum', 'Palladium'] as MetalType[]).map(metal => {
+                          const ap = autoPremiums[metal];
+                          const cityRate = config.city_rates[selectedConfigCity]?.ask || config.usd_iqd_index;
+                          const isDiscount = ap.premiumUsdPerKg < 0;
+                          const magnitudeColor = !ap.hasData
+                            ? 'text-muted-foreground'
+                            : isDiscount
+                              ? 'text-rose-600'
+                              : 'text-emerald-600';
+                          return (
+                            <div key={metal} className="space-y-3 border-b border-border/50 pb-4 last:border-0 last:pb-0">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-black uppercase tracking-wider">{metal}</span>
+                                {ap.hasData ? (
+                                  <Badge
+                                    variant="outline"
+                                    className={`text-[8px] font-bold ${isDiscount ? 'border-rose-500/40 text-rose-600' : 'border-emerald-500/40 text-emerald-600'}`}
+                                  >
+                                    {isDiscount ? 'Discount' : 'Premium'}
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="text-[8px] font-bold text-muted-foreground">
+                                    No Spot Data
+                                  </Badge>
+                                )}
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-0.5">
+                                  <div className="text-[8px] uppercase font-black text-muted-foreground flex items-center gap-1">
+                                    <Globe className="w-2.5 h-2.5" /> Spot USD / oz
+                                  </div>
+                                  <div className="font-mono text-xs font-bold">
+                                    {ap.spotUsdPerOz > 0 ? `$${ap.spotUsdPerOz.toFixed(2)}` : '—'}
+                                  </div>
+                                </div>
+                                <div className="space-y-0.5">
+                                  <div className="text-[8px] uppercase font-black text-muted-foreground flex items-center gap-1">
+                                    <Globe className="w-2.5 h-2.5" /> Spot USD / kg
+                                  </div>
+                                  <div className="font-mono text-xs font-bold">
+                                    {ap.spotUsdPerKg > 0 ? `$${ap.spotUsdPerKg.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '—'}
+                                  </div>
+                                </div>
+
+                                <div className="space-y-0.5">
+                                  <div className={`text-[8px] uppercase font-black flex items-center gap-1 ${magnitudeColor}`}>
+                                    <TrendingUp className="w-2.5 h-2.5" /> Premium USD / kg
+                                  </div>
+                                  <div className={`font-mono text-xs font-bold ${magnitudeColor}`}>
+                                    {ap.hasData ? `${ap.premiumUsdPerKg >= 0 ? '+' : ''}$${ap.premiumUsdPerKg.toFixed(2)}` : '—'}
+                                  </div>
+                                </div>
+                                <div className="space-y-0.5">
+                                  <div className={`text-[8px] uppercase font-black flex items-center gap-1 ${magnitudeColor}`}>
+                                    <Coins className="w-2.5 h-2.5" /> Premium IQD / kg
+                                  </div>
+                                  <div className={`font-mono text-xs font-bold ${magnitudeColor}`}>
+                                    {ap.hasData ? `${ap.premiumIqdPerKg >= 0 ? '+' : ''}${Math.round(ap.premiumIqdPerKg).toLocaleString()} IQD` : '—'}
+                                  </div>
+                                </div>
+
+                                <div className="col-span-2 space-y-0.5">
+                                  <div className="text-[8px] uppercase font-black text-muted-foreground">
+                                    Premium USD / oz
+                                  </div>
+                                  <div className={`font-mono text-xs font-bold ${magnitudeColor}`}>
+                                    {ap.hasData ? `${ap.premiumUsdPerOz >= 0 ? '+' : ''}$${ap.premiumUsdPerOz.toFixed(2)}` : '—'}
+                                  </div>
                                 </div>
                               </div>
-                              <div className="space-y-1.5">
-                                <label className="text-[8px] uppercase font-black text-muted-foreground flex items-center gap-1">
-                                  <Coins className="w-2.5 h-2.5" />
-                                  IQD / KG
-                                </label>
-                                <div className="relative">
-                                  <Input 
-                                    type="number"
-                                    className="h-9 text-xs font-mono pr-8 bg-muted/20 border-transparent focus:bg-background focus:border-primary" 
-                                    value={config.premiums[metal].iqd_per_kg}
-                                    onChange={(e) => updateConfig(`premiums.${metal}.iqd_per_kg`, Number(e.target.value))}
-                                  />
-                                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[8px] font-bold text-muted-foreground opacity-40">IQD</span>
-                                </div>
+
+                              <div className="text-[9px] text-muted-foreground/60 italic px-1">
+                                * Reference: {metal === 'Gold' ? '24K' : metal === 'Silver' ? '999' : 'flat'} syndicate ask at {cityRate.toLocaleString()} IQD ({selectedConfigCity} rate).
                               </div>
                             </div>
-                            <div className="text-[9px] text-muted-foreground/60 italic px-1">
-                              * Calculated at {config.city_rates[selectedConfigCity]?.ask || config.usd_iqd_index} IQD ({selectedConfigCity} Rate)
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </CardContent>
                     </Card>
 
