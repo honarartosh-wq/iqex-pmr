@@ -825,21 +825,43 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         City Selection
                       </CardTitle>
                     </CardHeader>
-                    <CardContent>
-                      <div className="flex flex-wrap gap-2">
-                        {Object.keys(config.city_rates).map(city => (
-                          <button
-                            key={city}
-                            onClick={() => setSelectedConfigCity(city)}
-                            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all border ${
-                              selectedConfigCity === city 
-                                ? 'bg-primary text-primary-foreground border-primary shadow-lg scale-105' 
-                                : 'bg-background text-muted-foreground border-border hover:border-primary/50'
-                            }`}
-                          >
-                            {city}
-                          </button>
-                        ))}
+                    <CardContent className="space-y-3">
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          value={citySearch}
+                          onChange={(e) => setCitySearch(e.target.value)}
+                          placeholder="Search governorate..."
+                          className="h-9 pl-8 text-xs"
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-2 max-h-52 overflow-y-auto">
+                        {(() => {
+                          const q = citySearch.trim().toLowerCase();
+                          const cities = Object.keys(config.city_rates).filter(c =>
+                            q === '' || c.toLowerCase().includes(q)
+                          );
+                          if (cities.length === 0) {
+                            return (
+                              <p className="text-[11px] text-muted-foreground italic py-2">
+                                No governorates match "{citySearch}".
+                              </p>
+                            );
+                          }
+                          return cities.map(city => (
+                            <button
+                              key={city}
+                              onClick={() => setSelectedConfigCity(city)}
+                              className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all border ${
+                                selectedConfigCity === city
+                                  ? 'bg-primary text-primary-foreground border-primary shadow-lg scale-105'
+                                  : 'bg-background text-muted-foreground border-border hover:border-primary/50'
+                              }`}
+                            >
+                              {city}
+                            </button>
+                          ));
+                        })()}
                       </div>
                     </CardContent>
                   </Card>
