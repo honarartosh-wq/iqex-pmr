@@ -889,15 +889,20 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                           {/* Gold Syndicate */}
                           <div className="space-y-4">
-                            <h4 className="text-[10px] uppercase font-black text-muted-foreground tracking-widest border-l-2 border-amber-500 pl-2">Gold Karats (Per Gram)</h4>
+                            <h4 className="text-[10px] uppercase font-black text-muted-foreground tracking-widest border-l-2 border-amber-500 pl-2">Gold Karats</h4>
                             <div className="space-y-4">
                               {Object.entries(config.city_rates[selectedConfigCity]?.local_prices?.Gold ?? config.local_prices?.Gold ?? INITIAL_CONFIG.local_prices.Gold).map(([karat, p]) => {
                                 const cityRate = config.city_rates[selectedConfigCity]?.ask || config.usd_iqd_index;
+                                const unit: 'Gram' | 'Kilogram' = p.unit ?? 'Gram';
+                                const unitLabel = unit === 'Kilogram' ? 'KG' : 'GRAM';
                                 return (
                                   <div key={karat} className="p-3 rounded-xl bg-muted/10 border border-transparent hover:border-amber-500/20 transition-all space-y-3">
                                     <div className="flex items-center justify-between">
                                       <span className="text-xs font-black uppercase tracking-wider">{karat}</span>
-                                      <Badge variant="outline" className="text-[8px] font-bold">Gold</Badge>
+                                      <div className="flex items-center gap-1.5">
+                                        <Badge variant="outline" className="text-[8px] font-bold">Gold</Badge>
+                                        <Badge variant="outline" className="text-[8px] font-bold border-amber-500/40 text-amber-600">Per {unitLabel}</Badge>
+                                      </div>
                                     </div>
                                     
                                     <div className="grid grid-cols-2 gap-4">
@@ -957,11 +962,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                             <div className="space-y-4">
                               {Object.entries(config.city_rates[selectedConfigCity]?.local_prices?.Silver ?? config.local_prices?.Silver ?? INITIAL_CONFIG.local_prices.Silver).map(([purity, p]) => {
                                 const cityRate = config.city_rates[selectedConfigCity]?.ask || config.usd_iqd_index;
+                                const unit: 'Gram' | 'Kilogram' = p.unit ?? 'Gram';
+                                const unitLabel = unit === 'Kilogram' ? 'KG' : 'GRAM';
                                 return (
                                   <div key={purity} className="p-3 rounded-xl bg-muted/10 border border-transparent hover:border-slate-400/20 transition-all space-y-3">
                                     <div className="flex items-center justify-between">
                                       <span className="text-xs font-black uppercase tracking-wider">{purity}</span>
-                                      <Badge variant="outline" className="text-[8px] font-bold">Silver</Badge>
+                                      <div className="flex items-center gap-1.5">
+                                        <Badge variant="outline" className="text-[8px] font-bold">Silver</Badge>
+                                        <Badge variant="outline" className="text-[8px] font-bold border-slate-400/40 text-slate-500">Per {unitLabel}</Badge>
+                                      </div>
                                     </div>
                                     
                                     <div className="grid grid-cols-2 gap-4">
