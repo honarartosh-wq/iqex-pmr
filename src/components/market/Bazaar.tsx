@@ -120,8 +120,12 @@ interface BazaarProps {
   displayMode?: 'USD' | 'IQD' | 'Both';
 }
 
+const STORAGE_KEY = 'iqex_bazaar_city';
+
 export const Bazaar: React.FC<BazaarProps> = ({ embedded = false, config, displayMode = 'IQD' }) => {
-  const [selectedCity, setSelectedCity] = useState<string | null>(null);
+  const [selectedCity, setSelectedCity] = useState<string | null>(() => {
+    try { return localStorage.getItem(STORAGE_KEY) || null; } catch { return null; }
+  });
   const [citySearch, setCitySearch] = useState('');
   const [showDrop, setShowDrop] = useState(false);
   const [prices, setPrices] = useState<any[]>([]);
@@ -222,6 +226,13 @@ export const Bazaar: React.FC<BazaarProps> = ({ embedded = false, config, displa
     const t = setTimeout(() => setIsRefreshing(false), 500);
     return () => clearTimeout(t);
   }, [derivedPrices, derivedFxRates, selectedCity]);
+
+  useEffect(() => {
+    try {
+      if (selectedCity) localStorage.setItem(STORAGE_KEY, selectedCity);
+      else localStorage.removeItem(STORAGE_KEY);
+    } catch {}
+  }, [selectedCity]);
 
   const clearCity = useCallback(() => {
     setSelectedCity(null);
