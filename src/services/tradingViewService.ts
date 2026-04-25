@@ -15,126 +15,183 @@ export interface LivePrice {
   lastUpdated: number;
 }
 
+// Map from short symbol (used by gold-api.com & metals.live) → internal key
+const SHORT_TO_SYMBOL: Record<string, string> = {
+  XAU: 'XAUUSD', XAG: 'XAGUSD', XPT: 'XPTUSD', XPD: 'XPDUSD',
+};
+const METALS_LIVE_KEY: Record<string, string> = {
+  gold: 'XAUUSD', silver: 'XAGUSD', platinum: 'XPTUSD', palladium: 'XPDUSD',
+};
+
 class TradingViewService {
+  // Seed prices updated to approximate April 2026 market values.
+  // These are only used until the first successful live fetch arrives.
   private prices: Record<string, LivePrice> = {
-    'XAUUSD': { symbol: 'XAUUSD', price: 2350.50, bid: 2350.20, ask: 2350.80, change24h: 0.45, high24h: 2365.00, low24h: 2340.00, lastUpdated: Date.now() },
-    'XAGUSD': { symbol: 'XAGUSD', price: 28.20, bid: 28.18, ask: 28.22, change24h: -0.12, high24h: 28.50, low24h: 27.90, lastUpdated: Date.now() },
-    'XPTUSD': { symbol: 'XPTUSD', price: 980.00, bid: 979.50, ask: 980.50, change24h: 0.15, high24h: 995.00, low24h: 970.00, lastUpdated: Date.now() },
-    'XPDUSD': { symbol: 'XPDUSD', price: 1050.00, bid: 1049.00, ask: 1051.00, change24h: -0.55, high24h: 1070.00, low24h: 1030.00, lastUpdated: Date.now() },
+    'XAUUSD': { symbol: 'XAUUSD', price: 4700.00, bid: 4699.06, ask: 4700.94, change24h: 0.45, high24h: 4720.00, low24h: 4680.00, lastUpdated: Date.now() },
+    'XAGUSD': { symbol: 'XAGUSD', price:   33.00, bid:   32.99, ask:   33.01, change24h: -0.12, high24h:  33.50, low24h:  32.50, lastUpdated: Date.now() },
+    'XPTUSD': { symbol: 'XPTUSD', price:  980.00, bid:  979.80, ask:  980.20, change24h: 0.15, high24h: 995.00, low24h: 970.00, lastUpdated: Date.now() },
+    'XPDUSD': { symbol: 'XPDUSD', price: 1050.00, bid: 1049.79, ask: 1050.21, change24h: -0.55, high24h: 1070.00, low24h: 1030.00, lastUpdated: Date.now() },
   };
 
   private callbacks: ((prices: Record<string, LivePrice>) => void)[] = [];
   private simInterval: ReturnType<typeof setInterval> | null = null;
   private fetchInterval: ReturnType<typeof setInterval> | null = null;
   private proxyDisabled = false;
-  // Tracks which symbols have received at least one authoritative quote from
-  // the upstream feed (gold-api proxy). Once a symbol is live, we stop
-  // applying simulated jitter to it so the displayed spot matches the real
-  // market instead of drifting between fetches.
+  // Tracks which symbols have received at least one authoritative quote.
+  // Once live, we stop applying simulated jitter so the price doesn't drift.
   private liveSymbols: Set<string> = new Set();
 
   constructor() {
     this.fetchRealPrices();
-    // Pre-fill smooth updates for symbols that haven't yet received live
-    // data, so the initial render isn't stuck on the seed values.
     this.simInterval = setInterval(() => this.simulateUpdates(), 2000);
-    // Refresh real prices every 15 seconds. The server caches upstream
-    // responses for 10s, so this keeps the client close to live without
-    // hammering the proxy.
     this.fetchInterval = setInterval(() => this.fetchRealPrices(), 15000);
 
-    // Ensure intervals are torn down on Vite HMR disposal to avoid leaking
-    // stale timers across module reloads.
     if (typeof import.meta !== 'undefined' && (import.meta as any).hot) {
       (import.meta as any).hot.dispose(() => this.destroy());
     }
   }
 
   public destroy() {
-    if (this.simInterval !== null) {
-      clearInterval(this.simInterval);
-      this.simInterval = null;
-    }
-    if (this.fetchInterval !== null) {
-      clearInterval(this.fetchInterval);
-      this.fetchInterval = null;
-    }
+    if (this.simInterval !== null) { clearInterval(this.simInterval); this.simInterval = null; }
+    if (this.fetchInterval !== null) { clearInterval(this.fetchInterval); this.fetchInterval = null; }
     this.callbacks = [];
   }
 
-  private async fetchRealPrices() {
-    if (this.proxyDisabled) return;
+  // ─── helpers ────────────────────────────────────────────────────────────────
 
-    const symbols = ['XAU', 'XAG', 'XPT', 'XPD'];
+  private applyPrice(symbol: string, rawPrice: number) {
+    this.prices[symbol] = {
+      ...this.prices[symbol],
+      price: rawPrice,
+      bid: rawPrice * 0.9998,
+      ask: rawPrice * 1.0002,
+      lastUpdated: Date.now(),
+    };
+    this.liveSymbols.add(symbol);
+  }
+
+  private parseGoldApiResponse(data: any): number | null {
+    const raw = typeof data?.price === 'string' ? parseFloat(data.price) : data?.price;
+    if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) return null;
+    return raw;
+  }
+
+  // ─── primary fetch: server-side proxy ───────────────────────────────────────
+
+  private async fetchRealPrices() {
+    if (this.proxyDisabled) {
+      await this.tryFallbackFetch();
+      return;
+    }
+
     let successCount = 0;
     let proxyMissing = false;
 
-    await Promise.all(symbols.map(async (s) => {
+    await Promise.all(Object.entries(SHORT_TO_SYMBOL).map(async ([short, symbol]) => {
       try {
-        const response = await fetch(`/api/prices/${s}`);
+        const response = await fetch(`/api/prices/${short}`);
         if (!response.ok) {
-          // 404 means the server-side proxy isn't deployed in this environment
-          // (e.g. static-only hosting). Stop polling to avoid console spam.
           if (response.status === 404) proxyMissing = true;
           return;
         }
-
         const data = await response.json();
-        const rawPrice = typeof data?.price === 'string' ? parseFloat(data.price) : data?.price;
-        if (typeof rawPrice !== 'number' || !Number.isFinite(rawPrice) || rawPrice <= 0) {
-          console.warn(`[tradingView] Ignoring non-numeric price for ${s}:`, data?.price);
+        const price = this.parseGoldApiResponse(data);
+        if (price === null) {
+          console.warn(`[tradingView] Ignoring non-numeric price for ${short}:`, data?.price);
           return;
         }
-
-        const symbol = `${s}USD`;
-        this.prices[symbol] = {
-          ...this.prices[symbol],
-          price: rawPrice,
-          bid: rawPrice * 0.9998,
-          ask: rawPrice * 1.0002,
-          lastUpdated: Date.now(),
-        };
-        this.liveSymbols.add(symbol);
-        successCount += 1;
-      } catch (error) {
-        // Network error (not an HTTP status); let the interval retry.
+        this.applyPrice(symbol, price);
+        successCount++;
+      } catch {
+        // Network error — let the interval retry
       }
     }));
 
     if (proxyMissing && successCount === 0) {
+      // Proxy route doesn't exist (static hosting). Switch to direct APIs.
       this.proxyDisabled = true;
       if (this.fetchInterval !== null) {
         clearInterval(this.fetchInterval);
-        this.fetchInterval = null;
+        this.fetchInterval = setInterval(() => this.tryFallbackFetch(), 15000);
       }
-      console.info('[tradingView] Price proxy unavailable; using simulated prices.');
+      console.info('[tradingView] Server proxy unavailable; switching to direct price APIs.');
+      await this.tryFallbackFetch();
     }
 
     this.notify();
   }
 
+  // ─── fallback A: direct gold-api.com (works if their CORS headers allow it) ─
+
+  private async fetchFromGoldApiDirect(): Promise<number> {
+    let count = 0;
+    await Promise.all(Object.entries(SHORT_TO_SYMBOL).map(async ([short, symbol]) => {
+      try {
+        const response = await fetch(`https://api.gold-api.com/price/${short}`, {
+          headers: { Accept: 'application/json' },
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        const price = this.parseGoldApiResponse(data);
+        if (price === null) return;
+        this.applyPrice(symbol, price);
+        count++;
+      } catch {}
+    }));
+    return count;
+  }
+
+  // ─── fallback B: metals.live (free, CORS-enabled) ───────────────────────────
+
+  private async fetchFromMetalsLive(): Promise<number> {
+    try {
+      const response = await fetch('https://api.metals.live/v1/spot', {
+        headers: { Accept: 'application/json' },
+      });
+      if (!response.ok) return 0;
+      const data = await response.json();
+      // API returns either [{gold: 4700}, {silver: 33}, ...] or {gold: 4700, silver: 33, ...}
+      const items: any[] = Array.isArray(data) ? data : [data];
+      let count = 0;
+      items.forEach(item => {
+        Object.entries(METALS_LIVE_KEY).forEach(([key, symbol]) => {
+          const v = item[key];
+          if (typeof v === 'number' && Number.isFinite(v) && v > 0) {
+            this.applyPrice(symbol, v);
+            count++;
+          }
+        });
+      });
+      return count;
+    } catch {
+      return 0;
+    }
+  }
+
+  private async tryFallbackFetch() {
+    let count = await this.fetchFromGoldApiDirect();
+    if (count === 0) count = await this.fetchFromMetalsLive();
+    if (count > 0) this.notify();
+  }
+
+  // ─── simulation (used only for symbols without a live quote yet) ─────────────
+
   private simulateUpdates() {
     let mutated = false;
     Object.keys(this.prices).forEach(symbol => {
-      // Don't simulate symbols whose real spot we already have - the auto
-      // premium panel compares against these values and must not drift.
       if (this.liveSymbols.has(symbol)) return;
-
       const p = this.prices[symbol];
       const volatility = symbol === 'XAGUSD' ? 0.001 : 0.0002;
       const change = p.price * (Math.random() - 0.5) * volatility;
-
       p.price += change;
       const spread = p.price * 0.0002;
       p.bid = p.price - spread / 2;
       p.ask = p.price + spread / 2;
       p.lastUpdated = Date.now();
-
       if (p.price > p.high24h) p.high24h = p.price;
       if (p.price < p.low24h) p.low24h = p.price;
       mutated = true;
     });
-
     if (mutated) this.notify();
   }
 
@@ -145,9 +202,7 @@ class TradingViewService {
   public subscribe(cb: (prices: Record<string, LivePrice>) => void) {
     this.callbacks.push(cb);
     cb({ ...this.prices });
-    return () => {
-      this.callbacks = this.callbacks.filter(c => c !== cb);
-    };
+    return () => { this.callbacks = this.callbacks.filter(c => c !== cb); };
   }
 
   public getPrices() {

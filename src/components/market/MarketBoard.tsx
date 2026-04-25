@@ -101,10 +101,12 @@ export const MarketBoard: React.FC<{
   const karatPrices       = indexGold   ? getKaratPrices(indexGold.global_bid, indexGold.global_ask) : [];
   const silverPurityPrices = indexSilver ? getSilverPurityPrices(indexSilver.global_bid, indexSilver.global_ask) : [];
 
+  // KG prices use the raw spot (global_price_usd) so the formula is exactly
+  // spot × 32.1507 × purity, matching what TradingView widget shows.
   const kgMetalPrices = (goldPrice && silverPrice)
     ? getKgMetalPrices(
-        goldPrice.global_bid,  goldPrice.global_ask,  goldPrice.change_24h,
-        silverPrice.global_bid, silverPrice.global_ask, silverPrice.change_24h,
+        goldPrice.global_price_usd,  goldPrice.change_24h,
+        silverPrice.global_price_usd, silverPrice.change_24h,
       )
     : [];
 
