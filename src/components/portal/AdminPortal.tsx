@@ -356,6 +356,30 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       }
       current[keys[keys.length - 1]] = value;
 
+      // When the 995 KG Gold bid or ask changes, proportionally recalculate
+      // 22K, 21K, and 18K for the same field. 24K is left as a manual input.
+      // Formula: pure_per_gram = value / (1000 × 0.995), then × karat_purity.
+      if (
+        keys[0] === 'city_rates' &&
+        keys[2] === 'local_prices' &&
+        keys[3] === 'Gold' &&
+        keys[4] === '995' &&
+        (keys[5] === 'bid_iqd' || keys[5] === 'ask_iqd')
+      ) {
+        const city = keys[1];
+        const gold = newConfig.city_rates[city]?.local_prices?.Gold;
+        if (gold?.['995']) {
+          const field = keys[5] as 'bid_iqd' | 'ask_iqd';
+          const purePerGram = gold['995'][field] / (1000 * 0.995);
+          const AUTO_KARATS: Record<string, number> = { '22K': 0.916, '21K': 0.875, '18K': 0.75 };
+          Object.entries(AUTO_KARATS).forEach(([karat, purity]) => {
+            if (gold[karat]) {
+              gold[karat] = { ...gold[karat], [field]: Math.round(purePerGram * purity) };
+            }
+          });
+        }
+      }
+
       // If a City Rate ask changes, rescale all local syndicate prices so they
       // stay consistent with the new exchange rate.
       if (keys[0] === 'city_rates' && keys[keys.length - 1] === 'ask' && keys.length === 3) {
@@ -390,6 +414,21 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         }
       }
 
+      return newConfig;
+    });
+  };
+
+  // Applies a flat IQD/gram spread to every Gold karat (per-gram karats use it
+  // directly; 995 KG uses spread × 1000). ask = bid + spread.
+  const handleGoldSpreadChange = (spreadIqdPerGram: number) => {
+    setConfig(prev => {
+      const newConfig: MarketConfig = JSON.parse(JSON.stringify(prev));
+      const gold = newConfig.city_rates[selectedConfigCity]?.local_prices?.Gold;
+      if (!gold) return prev;
+      ['24K', '22K', '21K', '18K'].forEach(karat => {
+        if (gold[karat]) gold[karat] = { ...gold[karat], ask_iqd: gold[karat].bid_iqd + spreadIqdPerGram };
+      });
+      if (gold['995']) gold['995'] = { ...gold['995'], ask_iqd: gold['995'].bid_iqd + spreadIqdPerGram * 1000 };
       return newConfig;
     });
   };
@@ -898,11 +937,49 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                           {/* Gold Syndicate */}
                           <div className="space-y-4">
                             <h4 className="text-[10px] uppercase font-black text-muted-foreground tracking-widest border-l-2 border-amber-500 pl-2">Gold Karats</h4>
+
+                            {/* Spread control — sets ask = bid + spread for all karats */}
+                            {(() => {
+                              const goldLocal = config.city_rates[selectedConfigCity]?.local_prices?.Gold ?? INITIAL_CONFIG.local_prices.Gold;
+                              const spread = (goldLocal['22K']?.ask_iqd ?? 0) - (goldLocal['22K']?.bid_iqd ?? 0);
+                              const cityRate = config.city_rates[selectedConfigCity]?.ask || config.usd_iqd_index;
+                              return (
+                                <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/20 space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[9px] font-black uppercase tracking-widest text-amber-700 dark:text-amber-400">Gold Spread</span>
+                                    <span className="text-[8px] font-mono text-muted-foreground">${(spread / cityRate).toFixed(2)}/gram</span>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div className="relative">
+                                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[7px] font-black text-amber-600/60">IQD/G</span>
+                                      <Input
+                                        type="number"
+                                        className="h-8 text-[10px] font-mono pl-10 bg-background"
+                                        value={spread}
+                                        onChange={(e) => handleGoldSpreadChange(Number(e.target.value))}
+                                      />
+                                    </div>
+                                    <div className="relative">
+                                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[7px] font-black text-amber-600/40">USD/G</span>
+                                      <Input
+                                        type="number"
+                                        className="h-8 text-[10px] font-mono pl-10 bg-amber-500/5 border-amber-500/10"
+                                        value={(spread / cityRate).toFixed(2)}
+                                        onChange={(e) => handleGoldSpreadChange(Math.round(Number(e.target.value) * cityRate))}
+                                      />
+                                    </div>
+                                  </div>
+                                  <p className="text-[8px] text-muted-foreground italic">Applies ask = bid + spread to all Gold karats and 995 KG bar.</p>
+                                </div>
+                              );
+                            })()}
+
                             <div className="space-y-4">
                               {Object.entries(config.city_rates[selectedConfigCity]?.local_prices?.Gold ?? config.local_prices?.Gold ?? INITIAL_CONFIG.local_prices.Gold).map(([karat, p]) => {
                                 const cityRate = config.city_rates[selectedConfigCity]?.ask || config.usd_iqd_index;
                                 const unit: 'Gram' | 'Kilogram' = p.unit ?? 'Gram';
                                 const unitLabel = unit === 'Kilogram' ? 'KG' : 'GRAM';
+                                const isAutoKarat = ['22K', '21K', '18K'].includes(karat);
                                 return (
                                   <div key={karat} className="p-3 rounded-xl bg-muted/10 border border-transparent hover:border-amber-500/20 transition-all space-y-3">
                                     <div className="flex items-center justify-between">
@@ -910,6 +987,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                                       <div className="flex items-center gap-1.5">
                                         <Badge variant="outline" className="text-[8px] font-bold">Gold</Badge>
                                         <Badge variant="outline" className="text-[8px] font-bold border-amber-500/40 text-amber-600">Per {unitLabel}</Badge>
+                                        {isAutoKarat && (
+                                          <Badge className="text-[8px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">Auto</Badge>
+                                        )}
                                       </div>
                                     </div>
                                     
