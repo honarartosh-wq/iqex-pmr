@@ -223,9 +223,11 @@ export default function App() {
   };
 
   const handleUpdateMarketConfig = async (newConfig: MarketConfig): Promise<boolean> => {
+    const prevConfig = marketConfig;
+    setMarketConfig(newConfig); // optimistic — Bazaar sees the change immediately
     const success = await marketService.updateConfig(newConfig);
-    if (success) {
-      setMarketConfig(newConfig);
+    if (!success) {
+      setMarketConfig(prevConfig); // rollback on failure
     }
     return success;
   };

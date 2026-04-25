@@ -120,8 +120,12 @@ interface BazaarProps {
   displayMode?: 'USD' | 'IQD' | 'Both';
 }
 
+const STORAGE_KEY = 'iqex_bazaar_city';
+
 export const Bazaar: React.FC<BazaarProps> = ({ embedded = false, config, displayMode = 'IQD' }) => {
-  const [selectedCity, setSelectedCity] = useState<string | null>(null);
+  const [selectedCity, setSelectedCity] = useState<string | null>(() => {
+    try { return localStorage.getItem(STORAGE_KEY) || null; } catch { return null; }
+  });
   const [citySearch, setCitySearch] = useState('');
   const [showDrop, setShowDrop] = useState(false);
   const [prices, setPrices] = useState<any[]>([]);
@@ -180,7 +184,13 @@ export const Bazaar: React.FC<BazaarProps> = ({ embedded = false, config, displa
       transfer_fees: cityRate.transfer_fees,
     }] : [];
 
-    const goldRows = Object.entries(config.local_prices?.Gold ?? {}).map(([karat, p]) => {
+    // Prefer per-city syndicate prices saved by the admin; fall back to the
+    // global local_prices if the city has no overrides yet.
+    const cityLocal = config.city_rates[selectedCity]?.local_prices;
+    const goldSource  = cityLocal?.Gold   ?? config.local_prices?.Gold   ?? {};
+    const silverSource = cityLocal?.Silver ?? config.local_prices?.Silver ?? {};
+
+    const goldRows = Object.entries(goldSource).map(([karat, p]) => {
       const pricesData = p as { bid_iqd: number; ask_iqd: number; unit?: 'Gram' | 'Kilogram' };
       return {
         name: `Gold ${karat}`,
@@ -192,7 +202,7 @@ export const Bazaar: React.FC<BazaarProps> = ({ embedded = false, config, displa
       };
     });
 
-    const silverRows = Object.entries(config.local_prices?.Silver ?? {}).map(([purity, p]) => {
+    const silverRows = Object.entries(silverSource).map(([purity, p]) => {
       const pricesData = p as { bid_iqd: number; ask_iqd: number; unit?: 'Gram' | 'Kilogram' };
       return {
         name: `Silver ${purity}`,
@@ -216,6 +226,13 @@ export const Bazaar: React.FC<BazaarProps> = ({ embedded = false, config, displa
     const t = setTimeout(() => setIsRefreshing(false), 500);
     return () => clearTimeout(t);
   }, [derivedPrices, derivedFxRates, selectedCity]);
+
+  useEffect(() => {
+    try {
+      if (selectedCity) localStorage.setItem(STORAGE_KEY, selectedCity);
+      else localStorage.removeItem(STORAGE_KEY);
+    } catch {}
+  }, [selectedCity]);
 
   const clearCity = useCallback(() => {
     setSelectedCity(null);
