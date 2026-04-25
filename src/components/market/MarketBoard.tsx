@@ -99,6 +99,38 @@ export const MarketBoard: React.FC<{ config: MarketConfig; displayMode?: 'USD' |
   const goldPrice = prices.find(p => p.metal === 'Gold');
   const silverPrice = prices.find(p => p.metal === 'Silver');
 
+  // 1 troy oz = 31.1035 g → 1 kg = 1000/31.1035 oz
+  const OZ_TO_KG = 1000 / 31.1035;
+
+  // KG spot instruments derived live from TradingView (no premium, pure spot math)
+  const kgSpotRows = [
+    ...(goldPrice ? [
+      {
+        label: 'GOLD 24K KG',
+        sublabel: '24 Karat · 1 Kilogram',
+        bid: goldPrice.global_bid * OZ_TO_KG,
+        ask: goldPrice.global_ask * OZ_TO_KG,
+        change_24h: goldPrice.change_24h,
+      },
+      {
+        label: 'GOLD 995 BAR',
+        sublabel: '99.5% Purity · 1 Kilogram',
+        bid: goldPrice.global_bid * OZ_TO_KG * 0.995,
+        ask: goldPrice.global_ask * OZ_TO_KG * 0.995,
+        change_24h: goldPrice.change_24h,
+      },
+    ] : []),
+    ...(silverPrice ? [
+      {
+        label: 'SILVER 999.9 KG',
+        sublabel: '999.9 Fine · 1 Kilogram',
+        bid: silverPrice.global_bid * OZ_TO_KG * 0.9999,
+        ask: silverPrice.global_ask * OZ_TO_KG * 0.9999,
+        change_24h: silverPrice.change_24h,
+      },
+    ] : []),
+  ];
+
   const indexMetalPrices = recomputeLocalPrices(config, prices);
   const indexGold = indexMetalPrices.find(p => p.metal === 'Gold');
   const indexSilver = indexMetalPrices.find(p => p.metal === 'Silver');
@@ -298,6 +330,7 @@ export const MarketBoard: React.FC<{ config: MarketConfig; displayMode?: 'USD' |
               <div className="col-span-1 text-right"></div>
             </div>
             <div className="divide-y divide-border/40">
+              {/* ── Spot per oz ── */}
               {prices.map((price) => (
                 <div key={price.metal} className="grid grid-cols-12 px-4 sm:px-5 py-3.5 items-center hover:bg-muted/20 transition-colors group">
                   <div className={localDisplayMode === 'Both' ? 'col-span-3 flex flex-col' : 'col-span-5 flex flex-col'}>
@@ -339,6 +372,53 @@ export const MarketBoard: React.FC<{ config: MarketConfig; displayMode?: 'USD' |
                   </div>
                 </div>
               ))}
+
+              {/* ── Kilogram prices (live spot-derived) ── */}
+              {kgSpotRows.length > 0 && (
+                <>
+                  <div className="px-4 sm:px-5 py-2 bg-muted/10 border-t border-border/60">
+                    <span className="text-[9px] font-black uppercase tracking-[0.25em] text-muted-foreground/60">Kilogram Prices · Spot Based</span>
+                  </div>
+                  {kgSpotRows.map((row) => (
+                    <div key={row.label} className="grid grid-cols-12 px-4 sm:px-5 py-3.5 items-center hover:bg-muted/20 transition-colors group">
+                      <div className={localDisplayMode === 'Both' ? 'col-span-3 flex flex-col' : 'col-span-5 flex flex-col'}>
+                        <span className="font-bold text-xs sm:text-sm tracking-tight group-hover:text-primary transition-colors">{row.label}</span>
+                        <span className="text-[9px] sm:text-[10px] font-bold text-muted-foreground uppercase tracking-tighter">{row.sublabel}</span>
+                      </div>
+                      {localDisplayMode !== 'Both' ? (
+                        <>
+                          <div className="col-span-3 text-right">
+                            <Num value={convert(row.bid, 'USD', localDisplayMode)} isUSD={localDisplayMode === 'USD'} className="text-sm sm:text-base text-emerald-500" />
+                          </div>
+                          <div className="col-span-3 text-right">
+                            <Num value={convert(row.ask, 'USD', localDisplayMode)} isUSD={localDisplayMode === 'USD'} className="text-sm sm:text-base text-rose-500" />
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="col-span-2 text-right">
+                            <Num value={row.bid} isUSD={true} className="text-xs sm:text-sm text-emerald-500" />
+                          </div>
+                          <div className="col-span-2 text-right">
+                            <Num value={row.ask} isUSD={true} className="text-xs sm:text-sm text-rose-500" />
+                          </div>
+                          <div className="col-span-2 text-right">
+                            <Num value={convert(row.bid, 'USD', 'IQD')} isUSD={false} className="text-xs sm:text-sm text-emerald-500/80" />
+                          </div>
+                          <div className="col-span-2 text-right">
+                            <Num value={convert(row.ask, 'USD', 'IQD')} isUSD={false} className="text-xs sm:text-sm text-rose-500/80" />
+                          </div>
+                        </>
+                      )}
+                      <div className="col-span-1 text-right">
+                        <span className={`text-[9px] sm:text-[11px] font-bold flex items-center justify-end ${row.change_24h >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                          {row.change_24h >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           </div>
         )}
