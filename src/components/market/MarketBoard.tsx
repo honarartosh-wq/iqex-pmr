@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MarketPrice, MarketConfig } from '../../types';
-import { fetchMarketPrices, calculateIraqiIndex, getKaratPrices, getSilverPurityPrices, recomputeLocalPrices, mapLivePricesToMarketPrices } from '../../services/marketService';
+import { fetchMarketPrices, calculateIraqiIndex, getKaratPrices, getSilverPurityPrices, recomputeLocalPrices, mapLivePricesToMarketPrices, getKgMetalPrices } from '../../services/marketService';
 import { tradingViewService } from '../../services/tradingViewService';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -21,10 +21,14 @@ const Num = ({
   }, [value]);
   const color = flash === 'up' ? '#4ade80' : flash === 'down' ? '#f87171' : undefined;
   const displayValue = value || 0;
+  const fmtUSD = (v: number) =>
+    v < 10
+      ? v.toFixed(4)
+      : v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return (
     <span style={{ color, transition: 'color 0.35s ease' }}
       className={`font-mono font-bold tabular-nums ${className}`}>
-      {isUSD ? displayValue.toFixed(displayValue < 10 ? 4 : 2) : Math.round(displayValue).toLocaleString()}
+      {isUSD ? fmtUSD(displayValue) : Math.round(displayValue).toLocaleString()}
     </span>
   );
 };
@@ -105,6 +109,13 @@ export const MarketBoard: React.FC<{ config: MarketConfig; displayMode?: 'USD' |
 
   const karatPrices = indexGold ? getKaratPrices(indexGold.global_bid, indexGold.global_ask) : [];
   const silverPurityPrices = indexSilver ? getSilverPurityPrices(indexSilver.global_bid, indexSilver.global_ask) : [];
+
+  const kgMetalPrices = (goldPrice && silverPrice)
+    ? getKgMetalPrices(
+        goldPrice.global_bid, goldPrice.global_ask, goldPrice.change_24h,
+        silverPrice.global_bid, silverPrice.global_ask, silverPrice.change_24h
+      )
+    : [];
 
   return (
     <div className="w-full max-w-4xl mx-auto flex flex-col min-h-screen">
@@ -335,6 +346,55 @@ export const MarketBoard: React.FC<{ config: MarketConfig; displayMode?: 'USD' |
                   <div className="col-span-1 text-right">
                     <span className={`text-[9px] sm:text-[11px] font-bold flex items-center justify-end ${price.change_24h >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
                       {price.change_24h >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                    </span>
+                  </div>
+                </div>
+              ))}
+
+              {/* ── Bullion Bars per KG — derived from TradingView live spot ── */}
+              {kgMetalPrices.length > 0 && (
+                <div className="px-4 sm:px-5 py-2 bg-muted/20">
+                  <span className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">
+                    Bullion Bars · Per Kilogram · TradingView Live
+                  </span>
+                </div>
+              )}
+              {kgMetalPrices.map((p) => (
+                <div key={p.label} className="grid grid-cols-12 px-4 sm:px-5 py-3.5 items-center hover:bg-muted/20 transition-colors group">
+                  <div className={localDisplayMode === 'Both' ? 'col-span-3 flex flex-col' : 'col-span-5 flex flex-col'}>
+                    <span className="font-bold text-xs sm:text-sm tracking-tight group-hover:text-primary transition-colors">{p.label}</span>
+                    <div className="text-[9px] sm:text-[10px] font-bold text-muted-foreground uppercase tracking-tighter">
+                      {p.desc}
+                    </div>
+                  </div>
+                  {localDisplayMode !== 'Both' ? (
+                    <>
+                      <div className="col-span-3 text-right">
+                        <Num value={convert(p.bid, 'USD', localDisplayMode)} isUSD={localDisplayMode === 'USD'} className="text-sm sm:text-base text-emerald-500" />
+                      </div>
+                      <div className="col-span-3 text-right">
+                        <Num value={convert(p.ask, 'USD', localDisplayMode)} isUSD={localDisplayMode === 'USD'} className="text-sm sm:text-base text-rose-500" />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="col-span-2 text-right">
+                        <Num value={p.bid} isUSD={true} className="text-xs sm:text-sm text-emerald-500" />
+                      </div>
+                      <div className="col-span-2 text-right">
+                        <Num value={p.ask} isUSD={true} className="text-xs sm:text-sm text-rose-500" />
+                      </div>
+                      <div className="col-span-2 text-right">
+                        <Num value={convert(p.bid, 'USD', 'IQD')} isUSD={false} className="text-xs sm:text-sm text-emerald-500/80" />
+                      </div>
+                      <div className="col-span-2 text-right">
+                        <Num value={convert(p.ask, 'USD', 'IQD')} isUSD={false} className="text-xs sm:text-sm text-rose-500/80" />
+                      </div>
+                    </>
+                  )}
+                  <div className="col-span-1 text-right">
+                    <span className={`text-[9px] sm:text-[11px] font-bold flex items-center justify-end ${p.change >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                      {p.change >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                     </span>
                   </div>
                 </div>
