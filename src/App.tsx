@@ -222,11 +222,12 @@ export default function App() {
     }
   };
 
-  const handleUpdateMarketConfig = async (newConfig: MarketConfig) => {
+  const handleUpdateMarketConfig = async (newConfig: MarketConfig): Promise<boolean> => {
     const success = await marketService.updateConfig(newConfig);
     if (success) {
       setMarketConfig(newConfig);
     }
+    return success;
   };
 
   const handleLogout = async () => {

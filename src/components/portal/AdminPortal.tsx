@@ -49,7 +49,7 @@ interface AdminPortalProps {
   isDarkMode: boolean;
   setIsDarkMode: (val: boolean) => void;
   marketConfig: MarketConfig;
-  onUpdateMarketConfig: (config: MarketConfig) => void;
+  onUpdateMarketConfig: (config: MarketConfig) => Promise<boolean>;
   onVerifyUser: (userId: string) => void;
   onRejectUser: (userId: string) => void;
   onCancelOrder: (orderId: string) => void;
@@ -198,6 +198,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const activeOrders = orders.filter(o => o.status === 'Open' || o.status === 'Negotiating');
 
   const [config, setConfig] = useState<MarketConfig>(marketConfig);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
 
   // Sync local config if prop changes (e.g. from another admin or reset)
   useEffect(() => {
@@ -296,7 +297,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     setNotifications(prev => prev.filter(n => n.id !== id));
   };
 
-  const handleSaveConfig = () => {
+  const handleSaveConfig = async () => {
+    setSaveStatus('saving');
     // Bake the currently-displayed auto-premium into config.premiums so the
     // downstream MarketPrice calculations (marketService) keep a usable value
     // even when no live-spot subscription is available.
@@ -310,21 +312,27 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         };
       }
     });
-    onUpdateMarketConfig(nextConfig);
+    const success = await onUpdateMarketConfig(nextConfig);
+    setSaveStatus(success ? 'success' : 'error');
+    setTimeout(() => setSaveStatus('idle'), 3000);
 
-    const successNotif: Notification = {
+    const notif: Notification = {
       id: `save-${Date.now()}`,
-      title: 'Configuration Updated',
-      message: `Market settings for ${selectedConfigCity} and global indices have been saved successfully.`,
-      type: 'success',
+      title: success ? 'Configuration Updated' : 'Save Failed',
+      message: success
+        ? `Market settings for ${selectedConfigCity} have been saved successfully.`
+        : `Failed to save market settings. Please check your connection and try again.`,
+      type: success ? 'success' : 'error',
       created_at: new Date().toISOString(),
       is_read: false,
     };
-    setNotifications(prev => [successNotif, ...prev]);
+    setNotifications(prev => [notif, ...prev]);
   };
 
-  const updateConfig = (path: string, value: any) => {
-    const keys = path.split('.');
+  // Accept either a pre-split key array (safe for keys containing dots like
+  // '999.9') or a dot-separated string for simple paths.
+  const updateConfig = (pathInput: string | string[], value: any) => {
+    const keys = Array.isArray(pathInput) ? pathInput : pathInput.split('.');
     setConfig(prev => {
       // Deep clone so nested recalculation below cannot mutate prev.
       const newConfig: MarketConfig = JSON.parse(JSON.stringify(prev));
@@ -348,14 +356,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       }
       current[keys[keys.length - 1]] = value;
 
-      // 4. If a City Rate changes
-      if (path.startsWith('city_rates.') && path.endsWith('.ask')) {
+      // If a City Rate ask changes, rescale all local syndicate prices so they
+      // stay consistent with the new exchange rate.
+      if (keys[0] === 'city_rates' && keys[keys.length - 1] === 'ask' && keys.length === 3) {
         const city = keys[1];
         const oldRate = prev.city_rates[city].ask || prev.usd_iqd_index;
         const newRate = value;
-        
-        // 4a. Update local metal prices (only if the city has its own
-        // syndicate price overrides; Gold/Silver subtrees may also be absent).
+
         const cityLocal = newConfig.city_rates[city]?.local_prices;
         if (cityLocal?.Gold) {
           Object.keys(cityLocal.Gold).forEach(karat => {
@@ -363,6 +370,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             const usd_bid = p.bid_iqd / oldRate;
             const usd_ask = p.ask_iqd / oldRate;
             cityLocal.Gold[karat] = {
+              ...p,
               bid_iqd: Math.round(usd_bid * newRate),
               ask_iqd: Math.round(usd_ask * newRate),
             };
@@ -374,12 +382,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             const usd_bid = p.bid_iqd / oldRate;
             const usd_ask = p.ask_iqd / oldRate;
             cityLocal.Silver[purity] = {
+              ...p,
               bid_iqd: Math.round(usd_bid * newRate),
               ask_iqd: Math.round(usd_ask * newRate),
             };
           });
         }
-
       }
 
       return newConfig;
@@ -979,20 +987,20 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                                       <div className="space-y-2">
                                         <div className="relative">
                                           <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[8px] font-black text-muted-foreground">IQD BID</span>
-                                          <Input 
+                                          <Input
                                             type="number"
-                                            className="h-8 text-[10px] font-mono pl-12 bg-background" 
+                                            className="h-8 text-[10px] font-mono pl-12 bg-background"
                                             value={p.bid_iqd}
-                                            onChange={(e) => updateConfig(`city_rates.${selectedConfigCity}.local_prices.Silver.${purity}.bid_iqd`, Number(e.target.value))}
+                                            onChange={(e) => updateConfig(['city_rates', selectedConfigCity, 'local_prices', 'Silver', purity, 'bid_iqd'], Number(e.target.value))}
                                           />
                                         </div>
                                         <div className="relative">
                                           <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[8px] font-black text-slate-600/50">USD BID</span>
-                                          <Input 
+                                          <Input
                                             type="number"
-                                            className="h-8 text-[10px] font-mono pl-12 bg-slate-500/5 border-slate-500/10" 
+                                            className="h-8 text-[10px] font-mono pl-12 bg-slate-500/5 border-slate-500/10"
                                             value={(p.bid_iqd / cityRate).toFixed(2)}
-                                            onChange={(e) => updateConfig(`city_rates.${selectedConfigCity}.local_prices.Silver.${purity}.bid_iqd`, Math.round(Number(e.target.value) * cityRate))}
+                                            onChange={(e) => updateConfig(['city_rates', selectedConfigCity, 'local_prices', 'Silver', purity, 'bid_iqd'], Math.round(Number(e.target.value) * cityRate))}
                                           />
                                         </div>
                                       </div>
@@ -1001,20 +1009,20 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                                       <div className="space-y-2">
                                         <div className="relative">
                                           <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[8px] font-black text-muted-foreground">IQD ASK</span>
-                                          <Input 
+                                          <Input
                                             type="number"
-                                            className="h-8 text-[10px] font-mono pl-12 bg-background" 
+                                            className="h-8 text-[10px] font-mono pl-12 bg-background"
                                             value={p.ask_iqd}
-                                            onChange={(e) => updateConfig(`city_rates.${selectedConfigCity}.local_prices.Silver.${purity}.ask_iqd`, Number(e.target.value))}
+                                            onChange={(e) => updateConfig(['city_rates', selectedConfigCity, 'local_prices', 'Silver', purity, 'ask_iqd'], Number(e.target.value))}
                                           />
                                         </div>
                                         <div className="relative">
                                           <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[8px] font-black text-slate-600/50">USD ASK</span>
-                                          <Input 
+                                          <Input
                                             type="number"
-                                            className="h-8 text-[10px] font-mono pl-12 bg-slate-500/5 border-slate-500/10" 
+                                            className="h-8 text-[10px] font-mono pl-12 bg-slate-500/5 border-slate-500/10"
                                             value={(p.ask_iqd / cityRate).toFixed(2)}
-                                            onChange={(e) => updateConfig(`city_rates.${selectedConfigCity}.local_prices.Silver.${purity}.ask_iqd`, Math.round(Number(e.target.value) * cityRate))}
+                                            onChange={(e) => updateConfig(['city_rates', selectedConfigCity, 'local_prices', 'Silver', purity, 'ask_iqd'], Math.round(Number(e.target.value) * cityRate))}
                                           />
                                         </div>
                                       </div>
@@ -1186,15 +1194,28 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     </Card>
 
                     {/* Action Button */}
-                    <Button 
+                    <Button
                       onClick={handleSaveConfig}
-                      className="w-full h-16 bg-slate-900 text-white hover:bg-slate-800 rounded-2xl shadow-xl flex flex-col items-center justify-center gap-1 group"
+                      disabled={saveStatus === 'saving'}
+                      className={`w-full h-16 text-white rounded-2xl shadow-xl flex flex-col items-center justify-center gap-1 group transition-colors ${
+                        saveStatus === 'success' ? 'bg-emerald-600 hover:bg-emerald-700' :
+                        saveStatus === 'error'   ? 'bg-rose-600 hover:bg-rose-700' :
+                        saveStatus === 'saving'  ? 'bg-slate-500 cursor-not-allowed' :
+                        'bg-slate-900 hover:bg-slate-800'
+                      }`}
                     >
                       <div className="flex items-center gap-2">
                         <Save className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                        <span className="text-sm font-black uppercase tracking-[0.2em]">Update Market</span>
+                        <span className="text-sm font-black uppercase tracking-[0.2em]">
+                          {saveStatus === 'saving'  ? 'Saving…' :
+                           saveStatus === 'success' ? 'Saved!' :
+                           saveStatus === 'error'   ? 'Save Failed' :
+                           'Update Market'}
+                        </span>
                       </div>
-                      <span className="text-[10px] font-bold opacity-60 uppercase tracking-widest">Apply changes to {selectedConfigCity}</span>
+                      <span className="text-[10px] font-bold opacity-60 uppercase tracking-widest">
+                        {saveStatus === 'error' ? 'Check connection and retry' : `Apply changes to ${selectedConfigCity}`}
+                      </span>
                     </Button>
 
                     <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-2xl">
@@ -1235,11 +1256,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       <p className="text-[10px] text-muted-foreground italic">This fee is charged to traders every 30 days to maintain active status.</p>
                     </div>
 
-                    <Button 
+                    <Button
                       onClick={handleSaveConfig}
+                      disabled={saveStatus === 'saving'}
                       className="w-full bg-primary text-primary-foreground font-bold uppercase tracking-widest"
                     >
-                      Save Subscription Settings
+                      {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'success' ? 'Saved!' : saveStatus === 'error' ? 'Save Failed' : 'Save Subscription Settings'}
                     </Button>
                   </CardContent>
                 </Card>
