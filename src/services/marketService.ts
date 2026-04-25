@@ -118,10 +118,24 @@ export const getSilverPurityPrices = (bid: number, ask: number) => {
   const ozToGram = 31.1035;
   const baseBid = bid / ozToGram;
   const baseAsk = ask / ozToGram;
-  
+
   return [
     { purity: '999', value: 0.999, bid: baseBid * 0.999, ask: baseAsk * 0.999 },
     { purity: '925', value: 0.925, bid: baseBid * 0.925, ask: baseAsk * 0.925 },
+  ];
+};
+
+// Returns KG bar prices derived from TradingView live spot (oz) prices.
+// 1 KG = 32.1507 troy oz. Purity multipliers: 999 = 0.999, 995 = 0.995, 999.9 = 0.9999.
+export const getKgMetalPrices = (
+  goldBid: number, goldAsk: number, goldChange: number,
+  silverBid: number, silverAsk: number, silverChange: number
+) => {
+  const ozPerKg = 32.1507;
+  return [
+    { label: 'GOLD.999', desc: 'Gold 999 · 1 KG Bar', bid: goldBid * ozPerKg * 0.999, ask: goldAsk * ozPerKg * 0.999, change: goldChange },
+    { label: 'GOLD.995', desc: 'Gold 995 · 1 KG Bar', bid: goldBid * ozPerKg * 0.995, ask: goldAsk * ozPerKg * 0.995, change: goldChange },
+    { label: 'SILVER.999.9', desc: 'Silver 999.9 · 1 KG', bid: silverBid * ozPerKg * 0.9999, ask: silverAsk * ozPerKg * 0.9999, change: silverChange },
   ];
 };
 
