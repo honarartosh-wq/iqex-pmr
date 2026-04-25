@@ -180,7 +180,13 @@ export const Bazaar: React.FC<BazaarProps> = ({ embedded = false, config, displa
       transfer_fees: cityRate.transfer_fees,
     }] : [];
 
-    const goldRows = Object.entries(config.local_prices?.Gold ?? {}).map(([karat, p]) => {
+    // Prefer per-city syndicate prices saved by the admin; fall back to the
+    // global local_prices if the city has no overrides yet.
+    const cityLocal = config.city_rates[selectedCity]?.local_prices;
+    const goldSource  = cityLocal?.Gold   ?? config.local_prices?.Gold   ?? {};
+    const silverSource = cityLocal?.Silver ?? config.local_prices?.Silver ?? {};
+
+    const goldRows = Object.entries(goldSource).map(([karat, p]) => {
       const pricesData = p as { bid_iqd: number; ask_iqd: number; unit?: 'Gram' | 'Kilogram' };
       return {
         name: `Gold ${karat}`,
@@ -192,7 +198,7 @@ export const Bazaar: React.FC<BazaarProps> = ({ embedded = false, config, displa
       };
     });
 
-    const silverRows = Object.entries(config.local_prices?.Silver ?? {}).map(([purity, p]) => {
+    const silverRows = Object.entries(silverSource).map(([purity, p]) => {
       const pricesData = p as { bid_iqd: number; ask_iqd: number; unit?: 'Gram' | 'Kilogram' };
       return {
         name: `Silver ${purity}`,
