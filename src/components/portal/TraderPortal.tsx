@@ -261,7 +261,7 @@ export const TraderPortal: React.FC<TraderPortalProps> = ({
                 }
               >
 
-                {activeTab === 'prices' && <MarketBoard config={marketConfig} displayMode={displayMode} />}
+                {activeTab === 'prices' && <MarketBoard config={marketConfig} displayMode={displayMode} isDarkMode={isDarkMode} />}
 
                 {/* ↓ embedded=true hides Bazaar's own header + ticker */}
                 {activeTab === 'bazaar' && <Bazaar embedded config={marketConfig} displayMode={displayMode} />}
